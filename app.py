@@ -1,7 +1,7 @@
 from functools import wraps
 from decimal import Decimal
-
-#testing first update
+from datetime import datetime
+import math
 
 from flask import Flask, jsonify, request, send_from_directory, session
 from mysql.connector import Error
@@ -35,18 +35,21 @@ def column_exists(cursor, table_name, column_name):
 
 
 def init_db():
-    """Create new tables/columns and seed login users if the old schema is already loaded."""
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    # Base Tables
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS Rooms (
             room_id INT PRIMARY KEY AUTO_INCREMENT,
             room_number VARCHAR(20) NOT NULL UNIQUE,
             room_type VARCHAR(50) NOT NULL,
-            daily_rate DECIMAL(10, 2) NOT NULL
+            daily_rate DECIMAL(10, 2) NOT NULL,
+            facilities VARCHAR(255) DEFAULT 'Standard Facilities',
+            status VARCHAR(20) DEFAULT 'Vacant'
         )
     """)
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS Medicines (
             medicine_id INT PRIMARY KEY AUTO_INCREMENT,
@@ -54,16 +57,49 @@ def init_db():
             unit_price DECIMAL(10, 2) NOT NULL
         )
     """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS Patient (
+            patient_id INT PRIMARY KEY AUTO_INCREMENT,
+            first_name VARCHAR(50) NOT NULL,
+            last_name VARCHAR(50) NOT NULL,
+            age INT CHECK (age >= 0),
+            weight_kg DECIMAL(5, 2),
+            phone VARCHAR(20),
+            address VARCHAR(255),
+            problem_description TEXT,
+            has_insurance BOOLEAN DEFAULT FALSE,
+            insurance_details VARCHAR(255),
+            tag VARCHAR(50) DEFAULT 'New',
+            appointment_time DATETIME NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'Pending',
+            assigned_doctor_id INT,
+            registered_by_employee_id INT,
+            room_id INT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS PatientNotes (
+            note_id INT PRIMARY KEY AUTO_INCREMENT,
+            patient_id INT NOT NULL,
+            doctor_id INT NOT NULL,
+            note_text TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (patient_id) REFERENCES Patient(patient_id) ON DELETE CASCADE
+        )
+    """)
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS Users (
             user_id INT PRIMARY KEY AUTO_INCREMENT,
             username VARCHAR(50) NOT NULL UNIQUE,
             password_hash VARCHAR(255) NOT NULL,
             role VARCHAR(20) NOT NULL,
-            doctor_id INT,
-            FOREIGN KEY (doctor_id) REFERENCES Doctors(doctor_id) ON DELETE CASCADE
+            doctor_id INT
         )
     """)
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS PatientMedicine (
             patient_id INT NOT NULL,
@@ -74,10 +110,12 @@ def init_db():
             FOREIGN KEY (medicine_id) REFERENCES Medicines(medicine_id) ON DELETE CASCADE
         )
     """)
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS Bills (
             bill_id INT PRIMARY KEY AUTO_INCREMENT,
             patient_id INT NOT NULL UNIQUE,
+            days_stayed INT DEFAULT 1,
             consultation_fee DECIMAL(10, 2) NOT NULL DEFAULT 0,
             room_charge DECIMAL(10, 2) NOT NULL DEFAULT 0,
             medicine_charge DECIMAL(10, 2) NOT NULL DEFAULT 0,
@@ -87,107 +125,28 @@ def init_db():
         )
     """)
 
-    if not column_exists(cursor, 'Doctors', 'consultation_fee'):
-        cursor.execute(
-            "ALTER TABLE Doctors ADD COLUMN consultation_fee DECIMAL(10, 2) NOT NULL DEFAULT 500.00"
-        )
-
-    if not column_exists(cursor, 'Patient', 'room_id'):
-        cursor.execute("ALTER TABLE Patient ADD COLUMN room_id INT NULL")
-        cursor.execute(
-            """
-            ALTER TABLE Patient
-            ADD CONSTRAINT fk_patient_room
-            FOREIGN KEY (room_id) REFERENCES Rooms(room_id) ON DELETE SET NULL
-            """
-        )
-
-    extra_employees = [
-        (5, 'Priya', 'Sharma', 'Doctor', '555-0105', 'p.sharma@hospital.org'),
-        (6, 'James', 'Wilson', 'Doctor', '555-0106', 'j.wilson@hospital.org'),
-        (7, 'Aisha', 'Khan', 'Doctor', '555-0107', 'a.khan@hospital.org'),
-        (8, 'Thomas', 'Lee', 'Doctor', '555-0108', 't.lee@hospital.org'),
+    # Alter schema for missing columns if upgrading existing database
+    patient_schema_updates = [
+        ('phone', 'VARCHAR(20)'),
+        ('address', 'VARCHAR(255)'),
+        ('problem_description', 'TEXT'),
+        ('has_insurance', 'BOOLEAN DEFAULT FALSE'),
+        ('insurance_details', 'VARCHAR(255)'),
+        ('tag', "VARCHAR(50) DEFAULT 'New'")
     ]
-    cursor.executemany(
-        """
-        INSERT IGNORE INTO Employee (employee_id, first_name, last_name, role, phone, email)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        """,
-        extra_employees
-    )
+    for col, col_type in patient_schema_updates:
+        if not column_exists(cursor, 'Patient', col):
+            cursor.execute(f"ALTER TABLE Patient ADD COLUMN {col} {col_type}")
 
-    extra_doctors = [
-        (3, 5, 'Orthopedics', 'MS Ortho', 1200.00),
-        (4, 6, 'Neurology', 'DM Neuro', 1800.00),
-        (5, 7, 'Dermatology', 'MD Derm', 900.00),
-        (6, 8, 'General Medicine', 'MBBS, MD', 600.00),
-    ]
-    cursor.executemany(
-        """
-        INSERT IGNORE INTO Doctors (doctor_id, employee_id, specialization, qualification, consultation_fee)
-        VALUES (%s, %s, %s, %s, %s)
-        """,
-        extra_doctors
-    )
-    cursor.execute("UPDATE Doctors SET consultation_fee = 1500.00 WHERE doctor_id = 1")
-    cursor.execute("UPDATE Doctors SET consultation_fee = 800.00 WHERE doctor_id = 2")
-    cursor.execute("UPDATE Doctors SET consultation_fee = 1200.00 WHERE doctor_id = 3")
-    cursor.execute("UPDATE Doctors SET consultation_fee = 1800.00 WHERE doctor_id = 4")
-    cursor.execute("UPDATE Doctors SET consultation_fee = 900.00 WHERE doctor_id = 5")
-    cursor.execute("UPDATE Doctors SET consultation_fee = 600.00 WHERE doctor_id = 6")
+    if not column_exists(cursor, 'Rooms', 'facilities'):
+        cursor.execute("ALTER TABLE Rooms ADD COLUMN facilities VARCHAR(255) DEFAULT 'AC, Wifi, TV'")
+    if not column_exists(cursor, 'Rooms', 'status'):
+        cursor.execute("ALTER TABLE Rooms ADD COLUMN status VARCHAR(20) DEFAULT 'Vacant'")
 
-    cursor.executemany(
-        """
-        INSERT IGNORE INTO Rooms (room_id, room_number, room_type, daily_rate)
-        VALUES (%s, %s, %s, %s)
-        """,
-        [
-            (1, 'G-101', 'General Ward', 1500.00),
-            (2, 'G-102', 'General Ward', 1500.00),
-            (3, 'SP-201', 'Semi-Private', 3000.00),
-            (4, 'P-301', 'Private', 5000.00),
-            (5, 'ICU-1', 'ICU', 8000.00),
-        ]
-    )
-    cursor.executemany(
-        """
-        INSERT IGNORE INTO Medicines (medicine_id, name, unit_price)
-        VALUES (%s, %s, %s)
-        """,
-        [
-            (1, 'Paracetamol 500mg', 20.00),
-            (2, 'Amoxicillin 250mg', 80.00),
-            (3, 'Ibuprofen 400mg', 35.00),
-            (4, 'Aspirin 75mg', 25.00),
-            (5, 'Cetirizine 10mg', 40.00),
-            (6, 'Omeprazole 20mg', 55.00),
-            (7, 'Insulin (vial)', 150.00),
-            (8, 'Salbutamol Inhaler', 90.00),
-        ]
-    )
+    if not column_exists(cursor, 'Bills', 'days_stayed'):
+        cursor.execute("ALTER TABLE Bills ADD COLUMN days_stayed INT DEFAULT 1")
 
-    extra_patients = [
-        (5, 'Raj', 'Patel', 34, 74.00, '2026-09-26 09:00:00', 'Pending', 3, 3, 2),
-        (6, 'Linda', 'Nguyen', 51, 66.40, '2026-09-26 10:30:00', 'Pending', 4, 3, 4),
-        (7, 'Omar', 'Hassan', 22, 70.10, '2026-09-26 15:00:00', 'Pending', 5, 3, 1),
-        (8, 'Grace', 'Kim', 40, 58.00, '2026-09-26 16:30:00', 'Pending', 6, 3, 3),
-        (9, 'Anita', 'Singh', 55, 64.00, '2026-09-26 08:30:00', 'Pending', 1, 3, 4),
-    ]
-    cursor.executemany(
-        """
-        INSERT IGNORE INTO Patient
-        (patient_id, first_name, last_name, age, weight_kg, appointment_time, status,
-         assigned_doctor_id, registered_by_employee_id, room_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """,
-        extra_patients
-    )
-    # Give existing sample patients a room if they have none
-    cursor.execute("UPDATE Patient SET room_id = 4 WHERE patient_id = 1 AND room_id IS NULL")
-    cursor.execute("UPDATE Patient SET room_id = 1 WHERE patient_id = 2 AND room_id IS NULL")
-    cursor.execute("UPDATE Patient SET room_id = 5 WHERE patient_id = 3 AND room_id IS NULL")
-    cursor.execute("UPDATE Patient SET room_id = 3 WHERE patient_id = 4 AND room_id IS NULL")
-
+    # Seed Admin User
     cursor.execute("SELECT COUNT(*) FROM Users WHERE username = 'admin'")
     if cursor.fetchone()[0] == 0:
         cursor.execute(
@@ -195,23 +154,29 @@ def init_db():
             ('admin', generate_password_hash('admin123'), 'admin', None)
         )
 
-    cursor.execute(
-        """
-        SELECT d.doctor_id, LOWER(CONCAT(LEFT(e.first_name, 1), e.last_name)) AS username
-        FROM Doctors d
-        JOIN Employee e ON d.employee_id = e.employee_id
-        ORDER BY d.doctor_id
-        """
-    )
-    doctor_rows = cursor.fetchall()
-    doctor_pw = generate_password_hash('doctor123')
-    for doctor_id, username in doctor_rows:
-        cursor.execute("SELECT COUNT(*) FROM Users WHERE username = %s", (username,))
-        if cursor.fetchone()[0] == 0:
-            cursor.execute(
-                "INSERT INTO Users (username, password_hash, role, doctor_id) VALUES (%s, %s, %s, %s)",
-                (username, doctor_pw, 'doctor', doctor_id)
-            )
+    # AUTO-UPDATE SEEDER: Populate details if existing database rows are empty/NULL
+    sample_patient_data = [
+        (1, '9876543210', '123 Main St, Kothrud, Pune', 'Chest tightness and shortness of breath during exertion.', True, 'HDFC Ergo - POL12345', 'Active'),
+        (2, '9876543211', '456 Park Ave, Viman Nagar, Pune', 'High fever, sore throat, and persistent nocturnal coughing.', False, None, 'Checkup'),
+        (3, '9876543212', '789 Oak Rd, Baner, Pune', 'Acute dyspnea and elevated blood pressure requiring ICU care.', True, 'Star Health - SH9876', 'Emergency'),
+        (4, '9876543213', '102 MG Road, Camp, Pune', 'Recurrent migraine headaches accompanied by mild dizziness.', True, 'ICICI Lombard - IL7721', 'Active'),
+        (5, '9876543214', '55 SB Road, Shivaji Nagar, Pune', 'Right knee swelling following a sports injury during football.', False, None, 'Checkup'),
+        (6, '9876543215', '88 Koregaon Park, Pune', 'Persistent lower back pain radiating down the left leg.', True, 'Care Health - CH4412', 'Active'),
+        (7, '9876543216', '12 FC Road, Deccan, Pune', 'Allergic skin rashes and severe itching over both arms.', False, None, 'New'),
+        (8, '9876543217', '34 Aundh Road, Aundh, Pune', 'Routine post-surgery recovery checkup and vitals assessment.', True, 'Max Bupa - MB3309', 'Discharged'),
+        (9, '9876543218', '90 Hadapsar Main St, Pune', 'Chronic joint stiffness and early morning hand numbness.', True, 'Bajaj Allianz - BA9012', 'Active')
+    ]
+
+    for pid, phone, addr, desc, ins, ins_det, tag in sample_patient_data:
+        cursor.execute(
+            """
+            UPDATE Patient 
+            SET phone = %s, address = %s, problem_description = %s, 
+                has_insurance = %s, insurance_details = %s, tag = %s 
+            WHERE patient_id = %s AND (phone IS NULL OR phone = '' OR phone = 'N/A')
+            """,
+            (phone, addr, desc, ins, ins_det, tag, pid)
+        )
 
     conn.commit()
     cursor.close()
@@ -220,9 +185,9 @@ def init_db():
 
 try:
     init_db()
-    print("Database connection successful!")
+    print("Database connection & auto-seeding successful!")
 except mysql.connector.Error as err:
-    print(f"Error: {err}")
+    print(f"Database Initialization Error: {err}")
 
 
 def current_user():
@@ -250,9 +215,7 @@ def admin_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
         user = current_user()
-        if not user:
-            return jsonify({'error': 'Please log in'}), 401
-        if user['role'] != 'admin':
+        if not user or user['role'] != 'admin':
             return jsonify({'error': 'Only the admin can perform this action'}), 403
         return fn(*args, **kwargs)
     return wrapper
@@ -261,9 +224,23 @@ def admin_required(fn):
 def money(value):
     if value is None:
         return 0.0
-    if isinstance(value, Decimal):
-        return float(value)
     return float(value)
+
+
+def calculate_stay_duration(appointment_time):
+    if not appointment_time:
+        return 1
+    if isinstance(appointment_time, str):
+        try:
+            app_dt = datetime.strptime(appointment_time, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            app_dt = datetime.strptime(appointment_time, '%Y-%m-%d %H:%M')
+    else:
+        app_dt = appointment_time
+    
+    delta = datetime.now() - app_dt
+    days = math.ceil(delta.total_seconds() / 86400)
+    return max(1, days)
 
 
 def parse_appointment_time(raw):
@@ -276,31 +253,25 @@ def parse_appointment_time(raw):
 def patient_list_query(where_sql='', params=()):
     query = f"""
         SELECT
-            p.patient_id,
-            p.first_name,
-            p.last_name,
+            p.patient_id, p.first_name, p.last_name,
             CONCAT(p.first_name, ' ', p.last_name) AS full_name,
-            p.age,
-            p.weight_kg,
+            p.age, p.weight_kg, p.phone, p.address, p.problem_description,
+            p.has_insurance, p.insurance_details, p.tag,
+            DATE_FORMAT(p.appointment_time, '%Y-%m-%d %H:%i:%s') AS appointment_time_raw,
             DATE_FORMAT(p.appointment_time, '%Y-%m-%d %H:%i') AS appointment_time,
             DATE(p.appointment_time) AS appointment_date,
-            p.status,
-            p.assigned_doctor_id,
+            p.status, p.assigned_doctor_id,
             CONCAT('Dr. ', de.first_name, ' ', de.last_name) AS doctor_name,
-            d.consultation_fee,
-            p.registered_by_employee_id,
+            d.consultation_fee, p.registered_by_employee_id,
             CONCAT(re.first_name, ' ', re.last_name) AS registered_by_name,
-            p.room_id,
-            r.room_number,
-            r.room_type,
-            r.daily_rate AS room_rate
+            p.room_id, r.room_number, r.room_type, r.daily_rate AS room_rate
         FROM Patient p
         LEFT JOIN Doctors d ON p.assigned_doctor_id = d.doctor_id
         LEFT JOIN Employee de ON d.employee_id = de.employee_id
         LEFT JOIN Employee re ON p.registered_by_employee_id = re.employee_id
         LEFT JOIN Rooms r ON p.room_id = r.room_id
         {where_sql}
-        ORDER BY p.appointment_time ASC, p.patient_id ASC
+        ORDER BY p.appointment_time DESC, p.patient_id DESC
     """
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -308,11 +279,12 @@ def patient_list_query(where_sql='', params=()):
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
+    
     for row in rows:
         row['consultation_fee'] = money(row.get('consultation_fee'))
         row['room_rate'] = money(row.get('room_rate'))
-        if row.get('weight_kg') is not None:
-            row['weight_kg'] = money(row['weight_kg'])
+        row['weight_kg'] = money(row.get('weight_kg')) if row.get('weight_kg') else None
+        row['days_stayed'] = calculate_stay_duration(row.get('appointment_time_raw'))
     return rows
 
 
@@ -377,10 +349,7 @@ def get_patients():
     try:
         user = current_user()
         if user['role'] == 'doctor':
-            rows = patient_list_query(
-                'WHERE p.assigned_doctor_id = %s',
-                (user['doctor_id'],)
-            )
+            rows = patient_list_query('WHERE p.assigned_doctor_id = %s', (user['doctor_id'],))
         else:
             rows = patient_list_query()
         return jsonify(rows)
@@ -388,26 +357,43 @@ def get_patients():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/patients/today', methods=['GET'])
+@app.route('/api/patients/<int:patient_id>/notes', methods=['GET', 'POST'])
 @login_required
-def get_today_patients():
+def handle_patient_notes(patient_id):
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
         user = current_user()
-        if user['role'] != 'doctor':
-            return jsonify({'error': 'Only doctor accounts can view this dashboard'}), 403
-        rows = patient_list_query(
+
+        if request.method == 'POST':
+            data = request.json or {}
+            note_text = data.get('note_text', '').strip()
+            if not note_text:
+                return jsonify({'error': 'Note text cannot be empty'}), 400
+            
+            doc_id = user['doctor_id'] if user['role'] == 'doctor' else (data.get('doctor_id') or 1)
+            cursor.execute(
+                "INSERT INTO PatientNotes (patient_id, doctor_id, note_text) VALUES (%s, %s, %s)",
+                (patient_id, doc_id, note_text)
+            )
+            conn.commit()
+
+        cursor.execute(
             """
-            WHERE p.assigned_doctor_id = %s
-              AND DATE(p.appointment_time) = CURDATE()
-              AND p.status <> 'Cancelled'
+            SELECT pn.note_id, pn.note_text, DATE_FORMAT(pn.created_at, '%Y-%m-%d %H:%i') AS created_at,
+                   CONCAT('Dr. ', e.first_name, ' ', e.last_name) AS doctor_name
+            FROM PatientNotes pn
+            JOIN Doctors d ON pn.doctor_id = d.doctor_id
+            JOIN Employee e ON d.employee_id = e.employee_id
+            WHERE pn.patient_id = %s
+            ORDER BY pn.created_at DESC
             """,
-            (user['doctor_id'],)
+            (patient_id,)
         )
-        return jsonify({
-            'count': len(rows),
-            'doctor_name': user['display_name'],
-            'patients': rows
-        })
+        notes = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return jsonify(notes)
     except Error as e:
         return jsonify({'error': str(e)}), 500
 
@@ -420,25 +406,31 @@ def add_patient():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        age = int(data['age']) if data.get('age') not in (None, '') else None
-        weight_kg = float(data['weight_kg']) if data.get('weight_kg') not in (None, '') else None
-        doc_id = int(data['assigned_doctor_id']) if data.get('assigned_doctor_id') not in (None, '') else None
-        emp_id = int(data['registered_by_employee_id']) if data.get('registered_by_employee_id') not in (None, '') else None
-        room_id = int(data['room_id']) if data.get('room_id') not in (None, '') else None
-        status = data.get('status', 'Pending')
-        appointment_time = parse_appointment_time(data.get('appointment_time'))
-
         query = """
             INSERT INTO Patient
-            (first_name, last_name, age, weight_kg, appointment_time, status,
+            (first_name, last_name, age, weight_kg, phone, address, problem_description,
+             has_insurance, insurance_details, tag, appointment_time, status,
              assigned_doctor_id, registered_by_employee_id, room_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         values = (
-            data['first_name'], data['last_name'], age, weight_kg, appointment_time,
-            status, doc_id, emp_id, room_id
+            data.get('first_name'), data.get('last_name'),
+            int(data['age']) if data.get('age') else None,
+            float(data['weight_kg']) if data.get('weight_kg') else None,
+            data.get('phone'), data.get('address'), data.get('problem_description'),
+            bool(data.get('has_insurance')), data.get('insurance_details'),
+            data.get('tag', 'New'),
+            parse_appointment_time(data.get('appointment_time')),
+            data.get('status', 'Pending'),
+            int(data['assigned_doctor_id']) if data.get('assigned_doctor_id') else None,
+            int(data['registered_by_employee_id']) if data.get('registered_by_employee_id') else None,
+            int(data['room_id']) if data.get('room_id') else None
         )
         cursor.execute(query, values)
+        
+        if data.get('room_id'):
+            cursor.execute("UPDATE Rooms SET status = 'Occupied' WHERE room_id = %s", (data['room_id'],))
+            
         conn.commit()
         cursor.close()
         conn.close()
@@ -455,24 +447,28 @@ def update_patient(patient_id):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        age = int(data['age']) if data.get('age') not in (None, '') else None
-        weight_kg = float(data['weight_kg']) if data.get('weight_kg') not in (None, '') else None
-        doc_id = int(data['assigned_doctor_id']) if data.get('assigned_doctor_id') not in (None, '') else None
-        emp_id = int(data['registered_by_employee_id']) if data.get('registered_by_employee_id') not in (None, '') else None
-        room_id = int(data['room_id']) if data.get('room_id') not in (None, '') else None
-        status = data.get('status', 'Pending')
-        appointment_time = parse_appointment_time(data.get('appointment_time'))
-
         query = """
             UPDATE Patient
             SET first_name = %s, last_name = %s, age = %s, weight_kg = %s,
+                phone = %s, address = %s, problem_description = %s,
+                has_insurance = %s, insurance_details = %s, tag = %s,
                 appointment_time = %s, status = %s, assigned_doctor_id = %s,
                 registered_by_employee_id = %s, room_id = %s
             WHERE patient_id = %s
         """
         values = (
-            data['first_name'], data['last_name'], age, weight_kg, appointment_time,
-            status, doc_id, emp_id, room_id, patient_id
+            data.get('first_name'), data.get('last_name'),
+            int(data['age']) if data.get('age') else None,
+            float(data['weight_kg']) if data.get('weight_kg') else None,
+            data.get('phone'), data.get('address'), data.get('problem_description'),
+            bool(data.get('has_insurance')), data.get('insurance_details'),
+            data.get('tag', 'New'),
+            parse_appointment_time(data.get('appointment_time')),
+            data.get('status', 'Pending'),
+            int(data['assigned_doctor_id']) if data.get('assigned_doctor_id') else None,
+            int(data['registered_by_employee_id']) if data.get('registered_by_employee_id') else None,
+            int(data['room_id']) if data.get('room_id') else None,
+            patient_id
         )
         cursor.execute(query, values)
         conn.commit()
@@ -483,41 +479,45 @@ def update_patient(patient_id):
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/patients/<int:patient_id>/cancel', methods=['PUT'])
-@admin_required
-def cancel_patient(patient_id):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        query = "UPDATE Patient SET status = 'Cancelled' WHERE patient_id = %s"
-        cursor.execute(query, (patient_id,))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        return jsonify({'message': 'Appointment cancelled successfully'}), 200
-    except Error as e:
-        return jsonify({'error': str(e)}), 500
-
-
 @app.route('/api/doctors', methods=['GET'])
 @login_required
 def get_doctors():
     try:
+        user = current_user()
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        query = """
-            SELECT
-                d.doctor_id,
-                d.employee_id,
-                CONCAT('Dr. ', e.first_name, ' ', e.last_name) AS name,
-                d.specialization,
-                d.qualification,
-                d.consultation_fee
-            FROM Doctors d
-            JOIN Employee e ON d.employee_id = e.employee_id
-            ORDER BY d.doctor_id ASC
-        """
-        cursor.execute(query)
+        
+        # Doctors see only their own row profile
+        if user['role'] == 'doctor':
+            query = """
+                SELECT
+                    d.doctor_id, d.employee_id,
+                    CONCAT('Dr. ', e.first_name, ' ', e.last_name) AS name,
+                    d.specialization, d.qualification, d.consultation_fee,
+                    COUNT(CASE WHEN p.status <> 'Cancelled' AND p.status <> 'Discharged' THEN p.patient_id END) AS active_patient_count
+                FROM Doctors d
+                JOIN Employee e ON d.employee_id = e.employee_id
+                LEFT JOIN Patient p ON d.doctor_id = p.assigned_doctor_id
+                WHERE d.doctor_id = %s
+                GROUP BY d.doctor_id, d.employee_id, e.first_name, e.last_name, d.specialization, d.qualification, d.consultation_fee
+                ORDER BY d.doctor_id ASC
+            """
+            cursor.execute(query, (user['doctor_id'],))
+        else:
+            query = """
+                SELECT
+                    d.doctor_id, d.employee_id,
+                    CONCAT('Dr. ', e.first_name, ' ', e.last_name) AS name,
+                    d.specialization, d.qualification, d.consultation_fee,
+                    COUNT(CASE WHEN p.status <> 'Cancelled' AND p.status <> 'Discharged' THEN p.patient_id END) AS active_patient_count
+                FROM Doctors d
+                JOIN Employee e ON d.employee_id = e.employee_id
+                LEFT JOIN Patient p ON d.doctor_id = p.assigned_doctor_id
+                GROUP BY d.doctor_id, d.employee_id, e.first_name, e.last_name, d.specialization, d.qualification, d.consultation_fee
+                ORDER BY d.doctor_id ASC
+            """
+            cursor.execute(query)
+            
         doctors = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -528,39 +528,45 @@ def get_doctors():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/employees', methods=['GET'])
-@login_required
-def get_employees():
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        query = """
-            SELECT employee_id, CONCAT(first_name, ' ', last_name) AS name, role, phone, email
-            FROM Employee
-            ORDER BY employee_id ASC
-        """
-        cursor.execute(query)
-        employees = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return jsonify(employees)
-    except Error as e:
-        return jsonify({'error': str(e)}), 500
-
-
 @app.route('/api/rooms', methods=['GET'])
 @login_required
 def get_rooms():
     try:
+        user = current_user()
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute(
-            """
-            SELECT room_id, room_number, room_type, daily_rate
-            FROM Rooms
-            ORDER BY room_id ASC
-            """
-        )
+        
+        # Doctors see room occupancy for their own patients only
+        if user['role'] == 'doctor':
+            cursor.execute(
+                """
+                SELECT r.room_id, r.room_number, r.room_type, r.daily_rate, r.facilities,
+                       CASE WHEN COUNT(p.patient_id) > 0 THEN 'Occupied' ELSE 'Vacant' END AS occupancy_status,
+                       GROUP_CONCAT(CONCAT(p.first_name, ' ', p.last_name) SEPARATOR ', ') AS occupied_by
+                FROM Rooms r
+                LEFT JOIN Patient p ON r.room_id = p.room_id 
+                    AND p.assigned_doctor_id = %s 
+                    AND p.status <> 'Cancelled' 
+                    AND p.status <> 'Discharged'
+                GROUP BY r.room_id, r.room_number, r.room_type, r.daily_rate, r.facilities
+                ORDER BY r.room_id ASC
+                """,
+                (user['doctor_id'],)
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT r.room_id, r.room_number, r.room_type, r.daily_rate, r.facilities,
+                       CASE WHEN COUNT(p.patient_id) > 0 THEN 'Occupied' ELSE 'Vacant' END AS occupancy_status,
+                       GROUP_CONCAT(CONCAT(p.first_name, ' ', p.last_name) SEPARATOR ', ') AS occupied_by
+                FROM Rooms r
+                LEFT JOIN Patient p ON r.room_id = p.room_id 
+                    AND p.status <> 'Cancelled' 
+                    AND p.status <> 'Discharged'
+                GROUP BY r.room_id, r.room_number, r.room_type, r.daily_rate, r.facilities
+                ORDER BY r.room_id ASC
+                """
+            )
         rooms = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -577,13 +583,7 @@ def get_medicines():
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute(
-            """
-            SELECT medicine_id, name, unit_price
-            FROM Medicines
-            ORDER BY medicine_id ASC
-            """
-        )
+        cursor.execute("SELECT medicine_id, name, unit_price FROM Medicines ORDER BY medicine_id ASC")
         medicines = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -594,67 +594,51 @@ def get_medicines():
         return jsonify({'error': str(e)}), 500
 
 
-def fetch_patient_medicines(cursor, patient_id):
-    cursor.execute(
-        """
-        SELECT pm.medicine_id, pm.quantity, m.name, m.unit_price
-        FROM PatientMedicine pm
-        JOIN Medicines m ON pm.medicine_id = m.medicine_id
-        WHERE pm.patient_id = %s
-        ORDER BY m.name
-        """,
-        (patient_id,)
-    )
-    items = cursor.fetchall()
-    for item in items:
-        item['unit_price'] = money(item.get('unit_price'))
-        item['line_total'] = round(item['unit_price'] * int(item['quantity']), 2)
-    return items
-
-
 @app.route('/api/billing/<int:patient_id>', methods=['GET'])
 @login_required
 def get_billing(patient_id):
     try:
-        user = current_user()
         rows = patient_list_query('WHERE p.patient_id = %s', (patient_id,))
         if not rows:
             return jsonify({'error': 'Patient not found'}), 404
         patient = rows[0]
-        if user['role'] == 'doctor' and patient['assigned_doctor_id'] != user['doctor_id']:
-            return jsonify({'error': 'You can only view bills for your own patients'}), 403
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        medicines = fetch_patient_medicines(cursor, patient_id)
+        cursor.execute(
+            """
+            SELECT pm.medicine_id, pm.quantity, m.name, m.unit_price
+            FROM PatientMedicine pm
+            JOIN Medicines m ON pm.medicine_id = m.medicine_id
+            WHERE pm.patient_id = %s
+            """,
+            (patient_id,)
+        )
+        medicines = cursor.fetchall()
         cursor.execute("SELECT * FROM Bills WHERE patient_id = %s", (patient_id,))
         bill = cursor.fetchone()
         cursor.close()
         conn.close()
 
+        days_stayed = patient['days_stayed']
         consultation = money(patient.get('consultation_fee'))
-        room_charge = money(patient.get('room_rate'))
-        medicine_charge = round(sum(item['line_total'] for item in medicines), 2)
+        room_charge = money(patient.get('room_rate')) * days_stayed
+        
+        med_charge = 0.0
+        for m in medicines:
+            m['unit_price'] = money(m['unit_price'])
+            m['line_total'] = round(m['unit_price'] * m['quantity'], 2)
+            med_charge += m['line_total']
+
         preview = {
+            'days_stayed': days_stayed,
             'consultation_fee': consultation,
             'room_charge': room_charge,
-            'medicine_charge': medicine_charge,
-            'total_amount': round(consultation + room_charge + medicine_charge, 2)
+            'medicine_charge': round(med_charge, 2),
+            'total_amount': round(consultation + room_charge + med_charge, 2)
         }
-        if bill:
-            bill['consultation_fee'] = money(bill.get('consultation_fee'))
-            bill['room_charge'] = money(bill.get('room_charge'))
-            bill['medicine_charge'] = money(bill.get('medicine_charge'))
-            bill['total_amount'] = money(bill.get('total_amount'))
-            if bill.get('generated_at'):
-                bill['generated_at'] = str(bill['generated_at'])
 
-        return jsonify({
-            'patient': patient,
-            'medicines': medicines,
-            'preview': preview,
-            'bill': bill
-        })
+        return jsonify({'patient': patient, 'medicines': medicines, 'preview': preview, 'bill': bill})
     except Error as e:
         return jsonify({'error': str(e)}), 500
 
@@ -668,17 +652,11 @@ def get_bills():
         cursor = conn.cursor(dictionary=True)
         query = """
             SELECT
-                b.bill_id,
-                b.patient_id,
+                b.bill_id, b.patient_id, b.days_stayed,
                 CONCAT(p.first_name, ' ', p.last_name) AS patient_name,
                 CONCAT('Dr. ', de.first_name, ' ', de.last_name) AS doctor_name,
-                d.specialization,
-                r.room_number,
-                r.room_type,
-                b.consultation_fee,
-                b.room_charge,
-                b.medicine_charge,
-                b.total_amount,
+                r.room_number, r.room_type,
+                b.consultation_fee, b.room_charge, b.medicine_charge, b.total_amount,
                 DATE_FORMAT(b.generated_at, '%Y-%m-%d %H:%i') AS generated_at
             FROM Bills b
             JOIN Patient p ON b.patient_id = p.patient_id
@@ -709,19 +687,14 @@ def save_bill():
     try:
         data = request.json or {}
         patient_id = int(data['patient_id'])
-        room_id = int(data['room_id']) if data.get('room_id') not in (None, '') else None
+        room_id = int(data['room_id']) if data.get('room_id') else None
         medicines = data.get('medicines') or []
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
         cursor.execute(
-            """
-            SELECT p.patient_id, p.assigned_doctor_id, d.consultation_fee
-            FROM Patient p
-            LEFT JOIN Doctors d ON p.assigned_doctor_id = d.doctor_id
-            WHERE p.patient_id = %s
-            """,
+            "SELECT appointment_time, assigned_doctor_id FROM Patient WHERE patient_id = %s",
             (patient_id,)
         )
         patient = cursor.fetchone()
@@ -730,65 +703,57 @@ def save_bill():
             conn.close()
             return jsonify({'error': 'Patient not found'}), 404
 
-        consultation = money(patient.get('consultation_fee'))
+        days_stayed = calculate_stay_duration(patient['appointment_time'])
+
+        cursor.execute("SELECT consultation_fee FROM Doctors WHERE doctor_id = %s", (patient.get('assigned_doctor_id'),))
+        doc = cursor.fetchone()
+        consultation = money(doc['consultation_fee']) if doc else 0.0
+
         room_charge = 0.0
         if room_id:
             cursor.execute("SELECT daily_rate FROM Rooms WHERE room_id = %s", (room_id,))
             room = cursor.fetchone()
-            if not room:
-                cursor.close()
-                conn.close()
-                return jsonify({'error': 'Room not found'}), 400
-            room_charge = money(room.get('daily_rate'))
+            if room:
+                room_charge = money(room['daily_rate']) * days_stayed
 
         cursor.execute("UPDATE Patient SET room_id = %s WHERE patient_id = %s", (room_id, patient_id))
         cursor.execute("DELETE FROM PatientMedicine WHERE patient_id = %s", (patient_id,))
 
         medicine_charge = 0.0
         for item in medicines:
-            medicine_id = item.get('medicine_id')
-            quantity = int(item.get('quantity') or 0)
-            if not medicine_id or quantity <= 0:
+            med_id = item.get('medicine_id')
+            qty = int(item.get('quantity') or 0)
+            if not med_id or qty <= 0:
                 continue
-            cursor.execute("SELECT unit_price FROM Medicines WHERE medicine_id = %s", (medicine_id,))
+            cursor.execute("SELECT unit_price FROM Medicines WHERE medicine_id = %s", (med_id,))
             med = cursor.fetchone()
-            if not med:
-                continue
-            cursor.execute(
-                """
-                INSERT INTO PatientMedicine (patient_id, medicine_id, quantity)
-                VALUES (%s, %s, %s)
-                """,
-                (patient_id, medicine_id, quantity)
-            )
-            medicine_charge += money(med.get('unit_price')) * quantity
+            if med:
+                cursor.execute(
+                    "INSERT INTO PatientMedicine (patient_id, medicine_id, quantity) VALUES (%s, %s, %s)",
+                    (patient_id, med_id, qty)
+                )
+                medicine_charge += money(med['unit_price']) * qty
 
-        medicine_charge = round(medicine_charge, 2)
         total = round(consultation + room_charge + medicine_charge, 2)
 
         cursor.execute(
             """
-            INSERT INTO Bills (patient_id, consultation_fee, room_charge, medicine_charge, total_amount)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO Bills (patient_id, days_stayed, consultation_fee, room_charge, medicine_charge, total_amount)
+            VALUES (%s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
+                days_stayed = VALUES(days_stayed),
                 consultation_fee = VALUES(consultation_fee),
                 room_charge = VALUES(room_charge),
                 medicine_charge = VALUES(medicine_charge),
                 total_amount = VALUES(total_amount),
                 generated_at = CURRENT_TIMESTAMP
             """,
-            (patient_id, consultation, room_charge, medicine_charge, total)
+            (patient_id, days_stayed, consultation, room_charge, medicine_charge, total)
         )
         conn.commit()
         cursor.close()
         conn.close()
-        return jsonify({
-            'message': 'Bill saved',
-            'consultation_fee': consultation,
-            'room_charge': room_charge,
-            'medicine_charge': medicine_charge,
-            'total_amount': total
-        }), 201
+        return jsonify({'message': 'Bill saved successfully'}), 201
     except Error as e:
         return jsonify({'error': str(e)}), 500
 

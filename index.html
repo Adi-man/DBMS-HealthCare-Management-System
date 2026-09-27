@@ -3,711 +3,971 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Healthcare Management System</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Healthcare System - EHR Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --danger: #ef4444;
+            --success: #10b981;
+            --warning: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            min-height: 100vh;
+        }
+
+        #auth-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .login-card {
+            background: white;
+            padding: 2.5rem;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+        }
+
+        .login-card h2 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            color: var(--primary);
+        }
+
+        .sidebar {
+            width: 260px;
+            background: #1e293b;
+            color: white;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-brand {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #38bdf8;
+            margin-bottom: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .user-profile {
+            background: #334155;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+        }
+
+        .user-profile div:first-child {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .user-profile div:last-child {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            border-bottom: 2px solid var(--border-color);
+            margin-bottom: 1.5rem;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            padding: 0.75rem 1.25rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            margin-bottom: 1.5rem;
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background-color: #f8fafc;
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.6rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-active { background: #dbeafe; color: #1e40af; }
+        .badge-emergency { background: #fee2e2; color: #991b1b; }
+        .badge-checkup { background: #fef3c7; color: #92400e; }
+        .badge-discharged { background: #d1fae5; color: #065f46; }
+        .badge-new { background: #e0e7ff; color: #3730a3; }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            border: none;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 0.85rem;
+        }
+
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-secondary { background: #e2e8f0; color: var(--text-main); }
+        .btn-secondary:hover { background: #cbd5e1; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.35rem;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.6rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 500;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 1.5rem;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .search-bar {
+            max-width: 300px;
+        }
+
+        .notes-list {
+            margin-top: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .note-card {
+            background: #f8fafc;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.75rem;
+        }
+
+        .note-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 0.35rem;
+        }
+    </style>
 </head>
 <body>
 
-<div id="login-screen" class="login-screen">
-    <div class="login-card">
-        <h1>Healthcare Management System</h1>
-        <p>Sign in as admin to manage appointments, or as a doctor to view today's patients.</p>
-        <form id="login-form" onsubmit="handleLogin(event)">
-            <label>Username</label>
-            <input type="text" id="login-username" required autocomplete="username">
-            <label>Password</label>
-            <input type="password" id="login-password" required autocomplete="current-password">
-            <p id="login-error" class="login-error"></p>
-            <button type="submit" class="add-btn login-submit">Sign in</button>
-        </form>
-        <div class="demo-accounts">
-            <strong>Demo accounts</strong>
-            <p>Admin: <code>admin</code> / <code>admin123</code></p>
-            <p>Doctors: <code>rchen</code>, <code>sjenkins</code>, <code>psharma</code>, <code>jwilson</code>, <code>akhan</code>, <code>tlee</code> / <code>doctor123</code></p>
+    <div id="auth-overlay">
+        <div class="login-card">
+            <h2>HealthCare EHR</h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">Sign in to your account</p>
+            <form onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="login-username" class="form-control" placeholder="e.g. admin or rchen" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="login-password" class="form-control" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; padding: 0.75rem;">Log In</button>
+            </form>
+            <div id="login-error" style="color: var(--danger); font-size: 0.8rem; margin-top: 1rem; display: none;"></div>
         </div>
     </div>
-</div>
 
-<div id="app-screen" class="container hidden">
-    <header>
-        <div>
-            <h1>Healthcare Management System</h1>
-            <p>Local Database Dashboard (Patients, Doctors &amp; Staff)</p>
+    <div class="sidebar">
+        <div class="sidebar-brand">
+            🏥 HealthCare DB
         </div>
-        <div class="user-bar">
-            <span id="session-label"></span>
-            <button class="btn-cancel" type="button" onclick="handleLogout()">Logout</button>
+        <div class="user-profile">
+            <div id="user-display-name">---</div>
+            <div id="user-role-badge">---</div>
         </div>
-    </header>
-
-    <div class="controls" id="tab-controls"></div>
-
-    <div class="table-card">
-        <section id="today" class="table-section">
-            <div class="section-header">
-                <div>
-                    <h2>Today's Patients</h2>
-                    <span id="today-count" class="badge">0 Today</span>
-                </div>
-            </div>
-            <div class="stat-grid">
-                <div class="stat-card">
-                    <p>Appointments today</p>
-                    <strong id="today-stat">0</strong>
-                </div>
-                <div class="stat-card">
-                    <p>Signed in as</p>
-                    <strong id="today-doctor-name">Doctor</strong>
-                </div>
-            </div>
-            <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Full Name</th>
-                        <th>Age</th>
-                        <th>Appointment Time</th>
-                        <th>Status</th>
-                        <th>Room</th>
-                    </tr>
-                </thead>
-                <tbody id="today-tbody"></tbody>
-            </table>
-            </div>
-        </section>
-
-        <section id="patients" class="table-section">
-            <div class="section-header">
-                <div>
-                    <h2>Active Appointments</h2>
-                    <span id="patient-count" class="badge">0 Records</span>
-                </div>
-                <button class="add-btn admin-only" onclick="openAddModal()">+ Add New Patient</button>
-            </div>
-            <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Full Name</th>
-                        <th>Age</th>
-                        <th>Weight</th>
-                        <th>Appointment Time</th>
-                        <th>Status</th>
-                        <th>Assigned Doctor</th>
-                        <th>Room</th>
-                        <th class="admin-only">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="patients-tbody"></tbody>
-            </table>
-            </div>
-        </section>
-
-        <section id="all-logs" class="table-section">
-            <div class="section-header">
-                <div>
-                    <h2>All Patient Records &amp; Logs</h2>
-                    <span id="logs-count" class="badge">0 Total Logs</span>
-                </div>
-            </div>
-            <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Full Name</th>
-                        <th>Age</th>
-                        <th>Weight</th>
-                        <th>Appointment Time</th>
-                        <th>Status</th>
-                        <th>Assigned Doctor</th>
-                        <th>Room</th>
-                        <th>Registered By</th>
-                    </tr>
-                </thead>
-                <tbody id="logs-tbody"></tbody>
-            </table>
-            </div>
-        </section>
-
-        <section id="doctors" class="table-section">
-            <div class="section-header">
-                <div>
-                    <h2>Doctors Directory</h2>
-                    <span id="doctor-count" class="badge">0 Records</span>
-                </div>
-            </div>
-            <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Doctor ID</th>
-                        <th>Employee ID</th>
-                        <th>Name</th>
-                        <th>Specialization</th>
-                        <th>Qualification</th>
-                        <th>Consultation Fee</th>
-                    </tr>
-                </thead>
-                <tbody id="doctors-tbody"></tbody>
-            </table>
-            </div>
-        </section>
-
-        <section id="employees" class="table-section">
-            <div class="section-header">
-                <div>
-                    <h2>Employee Directory</h2>
-                    <span id="employee-count" class="badge">0 Records</span>
-                </div>
-            </div>
-            <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Employee ID</th>
-                        <th>Name</th>
-                        <th>Role</th>
-                        <th>Phone</th>
-                        <th>Email</th>
-                    </tr>
-                </thead>
-                <tbody id="employees-tbody"></tbody>
-            </table>
-            </div>
-        </section>
-
-        <section id="bills" class="table-section">
-            <div class="section-header">
-                <div>
-                    <h2>Patient Bills</h2>
-                    <span id="bills-count" class="badge">0 Bills</span>
-                </div>
-            </div>
-            <div class="bill-layout admin-only">
-                <div class="bill-form">
-                    <h3>Create / update bill</h3>
-                    <div class="form-group">
-                        <label>Patient</label>
-                        <select id="bill-patient-select" onchange="loadBillPreview()"></select>
-                    </div>
-                    <p class="bill-line">Doctor: <strong id="bill-doctor">—</strong></p>
-                    <p class="bill-line">Consultation fee: <strong id="bill-consult">₹0.00</strong></p>
-                    <div class="form-group">
-                        <label>Room</label>
-                        <select id="bill-room-select" onchange="recalculateBillPreview()"></select>
-                    </div>
-                    <p class="bill-line">Room charge: <strong id="bill-room-charge">₹0.00</strong></p>
-                    <div class="form-group">
-                        <label>Medicines</label>
-                        <div id="medicine-list" class="medicine-list"></div>
-                    </div>
-                    <p class="bill-line">Medicine charge: <strong id="bill-med-charge">₹0.00</strong></p>
-                    <p class="bill-total">Total: <strong id="bill-total">₹0.00</strong></p>
-                    <button type="button" class="add-btn" onclick="saveBill()">Save Bill</button>
-                </div>
-            </div>
-            <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Bill ID</th>
-                        <th>Patient</th>
-                        <th>Doctor</th>
-                        <th>Room</th>
-                        <th>Consultation</th>
-                        <th>Room Charge</th>
-                        <th>Medicines</th>
-                        <th>Total</th>
-                        <th>Generated</th>
-                    </tr>
-                </thead>
-                <tbody id="bills-tbody"></tbody>
-            </table>
-            </div>
-        </section>
+        <button class="btn btn-secondary" style="margin-top: auto; width: 100%;" onclick="handleLogout()">Log Out</button>
     </div>
-</div>
 
-<dialog id="patient-modal">
-    <div class="modal-content">
-        <h3 id="modal-title">Add New Patient</h3>
-        <form id="add-patient-form" onsubmit="submitPatient(event)">
-            <input type="hidden" id="patient-id" name="patient_id">
+    <div class="main-content">
+        <div id="tab-controls" class="tabs"></div>
 
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>First Name *</label>
-                    <input type="text" id="first_name" name="first_name" maxlength="50" required placeholder="e.g. Jane">
+        <div id="tab-patients" class="tab-pane">
+            <div class="card">
+                <div class="flex-between" style="margin-bottom: 1rem;">
+                    <div>
+                        <h2 style="font-size: 1.25rem;">Patient Management</h2>
+                        <span id="patient-count" style="font-size: 0.8rem; color: var(--text-muted);">0 Records</span>
+                    </div>
+                    <div style="display: flex; gap: 1rem;">
+                        <input type="text" id="patient-search" class="form-control search-bar" placeholder="Search by name, phone, or tag..." onkeyup="renderPatients()">
+                        <button class="btn btn-primary admin-only" onclick="openPatientModal()">+ Register New Patient</button>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Last Name *</label>
-                    <input type="text" id="last_name" name="last_name" maxlength="50" required placeholder="e.g. Doe">
-                </div>
-                <div class="form-group">
-                    <label>Age (>= 0)</label>
-                    <input type="number" id="age" name="age" min="0" placeholder="e.g. 34">
-                </div>
-                <div class="form-group">
-                    <label>Weight (kg)</label>
-                    <input type="number" id="weight_kg" name="weight_kg" step="0.01" min="0" max="999.99" placeholder="e.g. 68.50">
-                </div>
-                <div class="form-group full-width">
-                    <label>Appointment Time *</label>
-                    <input type="datetime-local" id="appointment_time" name="appointment_time" required>
-                </div>
-                <div class="form-group">
-                    <label>Status</label>
-                    <select name="status" id="status-select">
-                        <option value="Pending">Pending</option>
-                        <option value="Completed">Completed</option>
-                        <option value="Cancelled">Cancelled</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Assigned Doctor</label>
-                    <select name="assigned_doctor_id" id="doctor-select">
-                        <option value="">-- None --</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Room</label>
-                    <select name="room_id" id="room-select">
-                        <option value="">-- None --</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Registered By</label>
-                    <select name="registered_by_employee_id" id="employee-select">
-                        <option value="">-- None --</option>
-                    </select>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Tag</th>
+                                <th>Phone & Address</th>
+                                <th>Insurance</th>
+                                <th>Doctor</th>
+                                <th>Room</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="patients-table-body"></tbody>
+                    </table>
                 </div>
             </div>
+        </div>
 
-            <div class="modal-actions">
-                <button type="button" class="btn-cancel" onclick="closeModal()">Cancel</button>
-                <button type="submit" class="add-btn">Save Record</button>
+        <div id="tab-rooms" class="tab-pane" style="display: none;">
+            <div class="card">
+                <h2 style="font-size: 1.25rem; margin-bottom: 1rem;">Room Directory & Facilities</h2>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Room #</th>
+                                <th>Type</th>
+                                <th>Daily Rate</th>
+                                <th>Facilities</th>
+                                <th>Status</th>
+                                <th>Occupied By</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rooms-table-body"></tbody>
+                    </table>
+                </div>
             </div>
-        </form>
+        </div>
+
+        <div id="tab-doctors" class="tab-pane" style="display: none;">
+            <div class="card">
+                <h2 style="font-size: 1.25rem; margin-bottom: 1rem;">Medical Staff Directory</h2>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Doctor Name</th>
+                                <th>Specialization</th>
+                                <th>Qualification</th>
+                                <th>Consultation Fee</th>
+                                <th>Active Patients</th>
+                            </tr>
+                        </thead>
+                        <tbody id="doctors-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-bills" class="tab-pane" style="display: none;">
+            <div class="card admin-only">
+                <h2 style="font-size: 1.25rem; margin-bottom: 1rem;">Generate / Update Billing</h2>
+                <form id="billing-form" onsubmit="handleSaveBill(event)">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Select Patient</label>
+                            <select id="bill-patient-id" class="form-control" onchange="loadBillingPreview(this.value)" required></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Assign Room</label>
+                            <select id="bill-room-id" class="form-control" onchange="recalculateBill()"></select>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 1rem;">
+                        <label style="font-size: 0.85rem; font-weight: 600;">Prescribed Medicines</label>
+                        <div id="medicine-selector-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; margin-top: 0.5rem;"></div>
+                    </div>
+
+                    <div id="billing-summary-box" style="background: #f1f5f9; padding: 1rem; border-radius: 8px; margin-top: 1rem;">
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); font-size: 0.85rem;">
+                            <div>Consultation: <strong id="summary-consultation">₹0</strong></div>
+                            <div>Room Charges: <strong id="summary-room">₹0</strong></div>
+                            <div>Medicines: <strong id="summary-medicines">₹0</strong></div>
+                            <div>Total Amount: <strong id="summary-total" style="color: var(--primary);">₹0</strong></div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">Save & Generate Official Invoice</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h2 style="font-size: 1.25rem; margin-bottom: 1rem;">Generated Invoices</h2>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Bill ID</th>
+                                <th>Patient Name</th>
+                                <th>Doctor</th>
+                                <th>Room</th>
+                                <th>Days</th>
+                                <th>Total Bill</th>
+                                <th>Generated At</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bills-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
-</dialog>
 
-<script>
-    let patientsData = [];
-    let roomsData = [];
-    let medicinesData = [];
-    let currentUser = null;
+    <!-- Patient Modal -->
+    <div id="patient-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Register New Patient</h3>
+                <button class="btn btn-secondary btn-sm" onclick="closePatientModal()">✕</button>
+            </div>
+            <form id="patient-form" onsubmit="handleSavePatient(event)">
+                <input type="hidden" id="patient-id">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>First Name</label>
+                        <input type="text" id="patient-first-name" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Last Name</label>
+                        <input type="text" id="patient-last-name" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Age</label>
+                        <input type="number" id="patient-age" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Tag / Status</label>
+                        <select id="patient-tag" class="form-control">
+                            <option value="New">New</option>
+                            <option value="Active">Active</option>
+                            <option value="Emergency">Emergency</option>
+                            <option value="Checkup">Checkup</option>
+                            <option value="Discharged">Discharged</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Phone Number</label>
+                        <input type="text" id="patient-phone" class="form-control" placeholder="9876543210">
+                    </div>
+                    <div class="form-group">
+                        <label>Address</label>
+                        <input type="text" id="patient-address" class="form-control" placeholder="Street, Area, City">
+                    </div>
+                </div>
 
-    document.addEventListener("DOMContentLoaded", restoreSession);
+                <div class="form-group">
+                    <label>Problem Description / Medical Reason</label>
+                    <textarea id="patient-problem" class="form-control" rows="2"></textarea>
+                </div>
 
-    async function api(url, options = {}) {
-        const res = await fetch(url, {
-            credentials: 'same-origin',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...(options.headers || {})
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Has Insurance?</label>
+                        <select id="patient-has-insurance" class="form-control" onchange="toggleInsuranceInput(this.value)">
+                            <option value="false">No (Self Pay)</option>
+                            <option value="true">Yes</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="insurance-details-group" style="display: none;">
+                        <label>Insurance Provider & Policy #</label>
+                        <input type="text" id="patient-insurance-details" class="form-control">
+                    </div>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Assigned Doctor</label>
+                        <select id="patient-doctor-id" class="form-control" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Assigned Room</label>
+                        <select id="patient-room-id" class="form-control"></select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Appointment / Admission Time</label>
+                    <input type="datetime-local" id="patient-appointment-time" class="form-control" required>
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">Save Patient Details</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notes Modal -->
+    <div id="notes-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="notes-modal-title">Patient Medical History & Visit Notes</h3>
+                <button class="btn btn-secondary btn-sm" onclick="closeNotesModal()">✕</button>
+            </div>
+            <div>
+                <form onsubmit="handleSaveNote(event)">
+                    <input type="hidden" id="notes-patient-id">
+                    <div class="form-group">
+                        <label>Add Clinical Note / Visit Log</label>
+                        <textarea id="new-note-text" class="form-control" rows="3" placeholder="Enter clinical observations, vitals, or prescription instructions..." required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm">+ Post Note</button>
+                </form>
+                <div id="notes-container" class="notes-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentUser = null;
+        let globalPatients = [];
+        let globalDoctors = [];
+        let globalRooms = [];
+        let globalMedicines = [];
+
+        async function api(url, options = {}) {
+            options.headers = options.headers || {};
+            options.headers['Content-Type'] = 'application/json';
+            const res = await fetch(url, options);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Request failed');
+            return data;
+        }
+
+        async function checkAuth() {
+            try {
+                currentUser = await api('/api/me');
+                document.getElementById('auth-overlay').style.display = 'none';
+                initDashboard();
+            } catch (err) {
+                document.getElementById('auth-overlay').style.display = 'flex';
             }
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.status === 401) {
-            showLogin();
-            throw new Error(data.error || 'Please log in');
         }
-        if (!res.ok) {
-            throw new Error(data.error || 'Request failed');
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const errEl = document.getElementById('login-error');
+            errEl.style.display = 'none';
+            try {
+                currentUser = await api('/api/login', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        username: document.getElementById('login-username').value,
+                        password: document.getElementById('login-password').value
+                    })
+                });
+                document.getElementById('auth-overlay').style.display = 'none';
+                initDashboard();
+            } catch (err) {
+                errEl.innerText = err.message;
+                errEl.style.display = 'block';
+            }
         }
-        return data;
-    }
 
-    async function restoreSession() {
-        try {
-            currentUser = await api('/api/me');
-            showApp();
-        } catch (err) {
-            showLogin();
+        async function handleLogout() {
+            await api('/api/logout', { method: 'POST' });
+            location.reload();
         }
-    }
 
-    function showLogin() {
-        currentUser = null;
-        document.getElementById('login-screen').classList.remove('hidden');
-        document.getElementById('app-screen').classList.add('hidden');
-    }
-
-    function showApp() {
-        document.getElementById('login-screen').classList.add('hidden');
-        document.getElementById('app-screen').classList.remove('hidden');
-        document.getElementById('session-label').innerText =
-            `${currentUser.display_name} (${currentUser.role})`;
-        buildTabs();
-        applyRoleVisibility();
-        loadData();
-    }
-
-    function buildTabs() {
-        const isAdmin = currentUser.role === 'admin';
-        const tabs = isAdmin
-            ? [
-                ['patients', 'Active Patients'],
-                ['all-logs', 'All Patient Logs'],
-                ['doctors', 'Doctors'],
-                ['employees', 'Employees'],
-                ['bills', 'Bills']
-            ]
-            : [
-                ['today', "Today's Patients"],
-                ['patients', 'My Patients'],
-                ['doctors', 'Doctors'],
-                ['bills', 'Bills']
-            ];
-        document.getElementById('tab-controls').innerHTML = tabs.map((tab, i) =>
-            `<button class="tab-btn${i === 0 ? ' active' : ''}" onclick="switchTab('${tab[0]}', this)">${tab[1]}</button>`
-        ).join('');
-        document.querySelectorAll('.table-section').forEach(sec => sec.classList.remove('active'));
-        document.getElementById(tabs[0][0]).classList.add('active');
-    }
-
-    function applyRoleVisibility() {
-        const isAdmin = currentUser.role === 'admin';
-        document.querySelectorAll('.admin-only').forEach(el => {
-            el.style.display = isAdmin ? '' : 'none';
-        });
-    }
-
-    async function handleLogin(event) {
-        event.preventDefault();
-        const errorEl = document.getElementById('login-error');
-        errorEl.innerText = '';
-        try {
-            currentUser = await api('/api/login', {
-                method: 'POST',
-                body: JSON.stringify({
-                    username: document.getElementById('login-username').value,
-                    password: document.getElementById('login-password').value
-                })
-            });
-            document.getElementById('login-form').reset();
-            showApp();
-        } catch (err) {
-            errorEl.innerText = err.message;
+        function buildTabs() {
+            const isAdmin = currentUser.role === 'admin';
+            const tabs = isAdmin
+                ? [
+                    ['patients', 'Active Patients'],
+                    ['rooms', 'Room Catalog'],
+                    ['doctors', 'Doctors Directory'],
+                    ['bills', 'Billing']
+                  ]
+                : [
+                    ['patients', 'My Assigned Patients'],
+                    ['rooms', 'Room Catalog']
+                  ];
+            
+            document.getElementById('tab-controls').innerHTML = tabs.map((tab, i) =>
+                `<button class="tab-btn${i === 0 ? ' active' : ''}" onclick="switchTab('${tab[0]}', this)">${tab[1]}</button>`
+            ).join('');
         }
-    }
 
-    async function handleLogout() {
-        await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
-        showLogin();
-    }
-
-    async function loadData() {
-        await Promise.all([
-            fetchPatients(),
-            fetchDoctors(),
-            fetchEmployees(),
-            fetchRooms(),
-            fetchMedicines(),
-            fetchBills()
-        ]);
-        if (currentUser.role === 'doctor') {
-            await fetchTodayPatients();
+        function applyRoleVisibility() {
+            const isAdmin = currentUser.role === 'admin';
+            document.querySelectorAll('.admin-only').forEach(el => el.style.display = isAdmin ? '' : 'none');
         }
-        populateBillPatients();
-    }
 
-    function rupees(value) {
-        return `₹${Number(value || 0).toFixed(2)}`;
-    }
+        function switchTab(tabKey, btnEl) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-pane').forEach(p => p.style.display = 'none');
+            
+            btnEl.classList.add('active');
+            document.getElementById(`tab-${tabKey}`).style.display = 'block';
 
-    function roomLabel(p) {
-        if (!p.room_id) return 'Unassigned';
-        return `${p.room_number} (${p.room_type})`;
-    }
-
-    function getStatusBadge(status) {
-        const s = status || 'Pending';
-        return `<span class="status-badge ${s.toLowerCase()}">${s}</span>`;
-    }
-
-    async function fetchPatients() {
-        patientsData = await api('/api/patients');
-        if (!Array.isArray(patientsData)) patientsData = [];
-
-        const activePatients = patientsData.filter(p => p.status !== 'Cancelled');
-        document.getElementById('patient-count').innerText = `${activePatients.length} Active Records`;
-        const isAdmin = currentUser.role === 'admin';
-
-        document.getElementById('patients-tbody').innerHTML = activePatients.map(p => `
-            <tr>
-                <td>${p.patient_id}</td>
-                <td>${p.full_name}</td>
-                <td>${p.age ?? 'N/A'}</td>
-                <td>${p.weight_kg ? Number(p.weight_kg).toFixed(2) : 'N/A'}</td>
-                <td>${p.appointment_time}</td>
-                <td>${getStatusBadge(p.status)}</td>
-                <td>${p.doctor_name ? `<span class="tag">${p.doctor_name}</span>` : 'Unassigned'}</td>
-                <td>${roomLabel(p)}</td>
-                ${isAdmin ? `<td>
-                    <button class="action-btn edit-btn" onclick="openEditModal(${p.patient_id})">Edit</button>
-                    <button class="action-btn cancel-btn" onclick="cancelAppointment(${p.patient_id})">Cancel</button>
-                </td>` : ''}
-            </tr>
-        `).join('');
-
-        document.getElementById('logs-count').innerText = `${patientsData.length} Total Logs`;
-        document.getElementById('logs-tbody').innerHTML = patientsData.map(p => `
-            <tr>
-                <td>${p.patient_id}</td>
-                <td>${p.full_name}</td>
-                <td>${p.age ?? 'N/A'}</td>
-                <td>${p.weight_kg ? Number(p.weight_kg).toFixed(2) : 'N/A'}</td>
-                <td>${p.appointment_time}</td>
-                <td>${getStatusBadge(p.status)}</td>
-                <td>${p.doctor_name || 'Unassigned'}</td>
-                <td>${roomLabel(p)}</td>
-                <td>${p.registered_by_name || 'System'}</td>
-            </tr>
-        `).join('');
-    }
-
-    async function fetchTodayPatients() {
-        const data = await api('/api/patients/today');
-        document.getElementById('today-count').innerText = `${data.count} Today`;
-        document.getElementById('today-stat').innerText = data.count;
-        document.getElementById('today-doctor-name').innerText = data.doctor_name;
-        document.getElementById('today-tbody').innerHTML = (data.patients || []).map(p => `
-            <tr>
-                <td>${p.patient_id}</td>
-                <td>${p.full_name}</td>
-                <td>${p.age ?? 'N/A'}</td>
-                <td>${p.appointment_time}</td>
-                <td>${getStatusBadge(p.status)}</td>
-                <td>${roomLabel(p)}</td>
-            </tr>
-        `).join('') || `<tr><td colspan="6">No appointments scheduled for today.</td></tr>`;
-    }
-
-    async function fetchDoctors() {
-        const doctorsData = await api('/api/doctors');
-        document.getElementById('doctor-count').innerText = `${doctorsData.length} Records`;
-        document.getElementById('doctors-tbody').innerHTML = doctorsData.map(d => `
-            <tr>
-                <td>${d.doctor_id}</td>
-                <td>${d.employee_id}</td>
-                <td>${d.name}</td>
-                <td>${d.specialization}</td>
-                <td>${d.qualification}</td>
-                <td>${rupees(d.consultation_fee)}</td>
-            </tr>
-        `).join('');
-
-        document.getElementById('doctor-select').innerHTML = '<option value="">-- None --</option>' +
-            doctorsData.map(d => `<option value="${d.doctor_id}">${d.name} (${d.specialization}) — ${rupees(d.consultation_fee)}</option>`).join('');
-    }
-
-    async function fetchEmployees() {
-        const employeesData = await api('/api/employees');
-        document.getElementById('employee-count').innerText = `${employeesData.length} Records`;
-        document.getElementById('employees-tbody').innerHTML = employeesData.map(e => `
-            <tr>
-                <td>${e.employee_id}</td>
-                <td>${e.name}</td>
-                <td>${e.role}</td>
-                <td>${e.phone || 'N/A'}</td>
-                <td>${e.email || 'N/A'}</td>
-            </tr>
-        `).join('');
-
-        document.getElementById('employee-select').innerHTML = '<option value="">-- None --</option>' +
-            employeesData.map(e => `<option value="${e.employee_id}">${e.name} (${e.role})</option>`).join('');
-    }
-
-    async function fetchRooms() {
-        roomsData = await api('/api/rooms');
-        const options = '<option value="">-- None --</option>' +
-            roomsData.map(r => `<option value="${r.room_id}" data-rate="${r.daily_rate}">${r.room_number} — ${r.room_type} (${rupees(r.daily_rate)}/day)</option>`).join('');
-        document.getElementById('room-select').innerHTML = options;
-        document.getElementById('bill-room-select').innerHTML = options;
-    }
-
-    async function fetchMedicines() {
-        medicinesData = await api('/api/medicines');
-        document.getElementById('medicine-list').innerHTML = medicinesData.map(m => `
-            <label class="medicine-row">
-                <input type="checkbox" data-medicine-id="${m.medicine_id}" data-price="${m.unit_price}" onchange="recalculateBillPreview()">
-                <span>${m.name} (${rupees(m.unit_price)})</span>
-                <input type="number" min="1" value="1" data-qty-for="${m.medicine_id}" onchange="recalculateBillPreview()">
-            </label>
-        `).join('');
-    }
-
-    async function fetchBills() {
-        const bills = await api('/api/bills');
-        document.getElementById('bills-count').innerText = `${bills.length} Bills`;
-        document.getElementById('bills-tbody').innerHTML = bills.map(b => `
-            <tr>
-                <td>${b.bill_id}</td>
-                <td>${b.patient_name}</td>
-                <td>${b.doctor_name || 'Unassigned'}</td>
-                <td>${b.room_number ? `${b.room_number} (${b.room_type})` : '—'}</td>
-                <td>${rupees(b.consultation_fee)}</td>
-                <td>${rupees(b.room_charge)}</td>
-                <td>${rupees(b.medicine_charge)}</td>
-                <td><strong>${rupees(b.total_amount)}</strong></td>
-                <td>${b.generated_at || '—'}</td>
-            </tr>
-        `).join('') || `<tr><td colspan="9">No bills generated yet.</td></tr>`;
-    }
-
-    function populateBillPatients() {
-        const select = document.getElementById('bill-patient-select');
-        select.innerHTML = '<option value="">-- Select patient --</option>' +
-            patientsData.map(p => `<option value="${p.patient_id}">${p.full_name} (ID ${p.patient_id})</option>`).join('');
-    }
-
-    async function loadBillPreview() {
-        const patientId = document.getElementById('bill-patient-select').value;
-        if (!patientId) {
-            document.getElementById('bill-doctor').innerText = '—';
-            document.getElementById('bill-consult').innerText = rupees(0);
-            recalculateBillPreview();
-            return;
+            if (tabKey === 'rooms') fetchRooms();
+            if (tabKey === 'doctors') fetchDoctors();
+            if (tabKey === 'bills') fetchBills();
         }
-        const data = await api(`/api/billing/${patientId}`);
-        document.getElementById('bill-doctor').innerText = data.patient.doctor_name || 'Unassigned';
-        document.getElementById('bill-consult').dataset.fee = data.patient.consultation_fee || 0;
-        document.getElementById('bill-consult').innerText = rupees(data.patient.consultation_fee);
-        document.getElementById('bill-room-select').value = data.patient.room_id || '';
 
-        const selected = new Map((data.medicines || []).map(m => [String(m.medicine_id), m.quantity]));
-        document.querySelectorAll('#medicine-list input[type="checkbox"]').forEach(box => {
-            const qty = selected.get(box.dataset.medicineId);
-            box.checked = Boolean(qty);
-            const qtyInput = document.querySelector(`[data-qty-for="${box.dataset.medicineId}"]`);
-            if (qtyInput) qtyInput.value = qty || 1;
-        });
-        recalculateBillPreview();
-    }
+        async function initDashboard() {
+            document.getElementById('user-display-name').innerText = currentUser.display_name || currentUser.username;
+            document.getElementById('user-role-badge').innerText = currentUser.role;
 
-    function selectedMedicines() {
-        const items = [];
-        document.querySelectorAll('#medicine-list input[type="checkbox"]').forEach(box => {
-            if (!box.checked) return;
-            const qtyInput = document.querySelector(`[data-qty-for="${box.dataset.medicineId}"]`);
-            items.push({
-                medicine_id: Number(box.dataset.medicineId),
-                quantity: Number(qtyInput.value || 1),
-                unit_price: Number(box.dataset.price)
-            });
-        });
-        return items;
-    }
+            buildTabs();
+            applyRoleVisibility();
 
-    function recalculateBillPreview() {
-        const consult = Number(document.getElementById('bill-consult').dataset.fee || 0);
-        const roomSelect = document.getElementById('bill-room-select');
-        const roomOption = roomSelect.selectedOptions[0];
-        const roomCharge = Number(roomOption?.dataset.rate || 0);
-        const medCharge = selectedMedicines().reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
-        document.getElementById('bill-room-charge').innerText = rupees(roomCharge);
-        document.getElementById('bill-med-charge').innerText = rupees(medCharge);
-        document.getElementById('bill-total').innerText = rupees(consult + roomCharge + medCharge);
-    }
-
-    async function saveBill() {
-        const patientId = document.getElementById('bill-patient-select').value;
-        if (!patientId) {
-            alert('Select a patient first.');
-            return;
-        }
-        try {
-            await api('/api/bills', {
-                method: 'POST',
-                body: JSON.stringify({
-                    patient_id: Number(patientId),
-                    room_id: document.getElementById('bill-room-select').value,
-                    medicines: selectedMedicines()
-                })
-            });
-            await Promise.all([fetchBills(), fetchPatients()]);
-            populateBillPatients();
-            document.getElementById('bill-patient-select').value = patientId;
-            alert('Bill saved.');
-        } catch (err) {
-            alert('Could not save bill: ' + err.message);
-        }
-    }
-
-    function openAddModal() {
-        document.getElementById('add-patient-form').reset();
-        document.getElementById('patient-id').value = '';
-        document.getElementById('status-select').value = 'Pending';
-        document.getElementById('modal-title').innerText = 'Add New Patient';
-        document.getElementById('patient-modal').showModal();
-    }
-
-    function openEditModal(patientId) {
-        const patient = patientsData.find(p => p.patient_id === patientId);
-        if (!patient) return;
-
-        document.getElementById('patient-id').value = patient.patient_id;
-        document.getElementById('first_name').value = patient.first_name;
-        document.getElementById('last_name').value = patient.last_name;
-        document.getElementById('age').value = patient.age ?? '';
-        document.getElementById('weight_kg').value = patient.weight_kg ?? '';
-        document.getElementById('appointment_time').value = patient.appointment_time.replace(' ', 'T');
-        document.getElementById('status-select').value = patient.status || 'Pending';
-        document.getElementById('doctor-select').value = patient.assigned_doctor_id ?? '';
-        document.getElementById('employee-select').value = patient.registered_by_employee_id ?? '';
-        document.getElementById('room-select').value = patient.room_id ?? '';
-
-        document.getElementById('modal-title').innerText = 'Edit Patient Details';
-        document.getElementById('patient-modal').showModal();
-    }
-
-    async function submitPatient(event) {
-        event.preventDefault();
-        const formData = new FormData(event.target);
-        const payload = Object.fromEntries(formData.entries());
-        const patientId = payload.patient_id;
-        const url = patientId ? `/api/patients/${patientId}` : '/api/patients';
-        const method = patientId ? 'PUT' : 'POST';
-
-        try {
-            await api(url, { method, body: JSON.stringify(payload) });
-            closeModal();
+            await Promise.all([fetchDoctors(), fetchRooms(), fetchMedicines()]);
             await fetchPatients();
-            populateBillPatients();
-        } catch (err) {
-            alert('Operation failed: ' + err.message);
         }
-    }
 
-    async function cancelAppointment(patientId) {
-        if (!confirm('Are you sure you want to cancel this appointment? It will be moved to "All Patient Logs".')) {
-            return;
+        async function fetchPatients() {
+            try {
+                globalPatients = await api('/api/patients');
+                renderPatients();
+                populateBillingPatientSelect();
+            } catch (err) {
+                console.error(err);
+            }
         }
-        try {
-            await api(`/api/patients/${patientId}/cancel`, { method: 'PUT' });
-            await fetchPatients();
-            populateBillPatients();
-        } catch (err) {
-            alert('Cancel failed: ' + err.message);
+
+        function getTagBadgeClass(tag) {
+            switch ((tag || '').toLowerCase()) {
+                case 'active': return 'badge-active';
+                case 'emergency': return 'badge-emergency';
+                case 'checkup': return 'badge-checkup';
+                case 'discharged': return 'badge-discharged';
+                default: return 'badge-new';
+            }
         }
-    }
 
-    function switchTab(sectionId, btnElement) {
-        document.querySelectorAll('.table-section').forEach(sec => sec.classList.remove('active'));
-        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-        document.getElementById(sectionId).classList.add('active');
-        btnElement.classList.add('active');
-    }
+        function renderPatients() {
+            const query = (document.getElementById('patient-search').value || '').toLowerCase();
+            const filtered = globalPatients.filter(p => 
+                (p.full_name || '').toLowerCase().includes(query) ||
+                (p.phone || '').toLowerCase().includes(query) ||
+                (p.tag || '').toLowerCase().includes(query)
+            );
 
-    function closeModal() {
-        document.getElementById('patient-modal').close();
-    }
-</script>
+            document.getElementById('patient-count').innerText = `${filtered.length} Records`;
+            const tbody = document.getElementById('patients-table-body');
 
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No patients found.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(p => `
+                <tr>
+                    <td><strong>${p.patient_id}</strong></td>
+                    <td>
+                        <strong>${p.full_name}</strong><br>
+                        <span style="font-size: 0.75rem; color: var(--text-muted);">Age: ${p.age || 'N/A'}</span>
+                    </td>
+                    <td><span class="badge ${getTagBadgeClass(p.tag)}">${p.tag || 'New'}</span></td>
+                    <td>
+                        ${p.phone || 'N/A'}<br>
+                        <span style="font-size: 0.75rem; color: var(--text-muted);">${p.address || ''}</span>
+                    </td>
+                    <td>${p.has_insurance ? `<span style="color: var(--success); font-weight: 600;">✓ Insured</span><br><span style="font-size: 0.75rem;">${p.insurance_details || ''}</span>` : 'Self Pay'}</td>
+                    <td>${p.doctor_name || 'Unassigned'}</td>
+                    <td>${p.room_number ? `${p.room_number} (${p.room_type})` : 'None'}</td>
+                    <td>
+                        <button class="btn btn-secondary btn-sm" onclick="openNotesModal(${p.patient_id}, '${p.full_name}')" style="background: #8b5cf6; color: white;">History/Notes</button>
+                        ${currentUser.role === 'admin' ? `<button class="btn btn-secondary btn-sm" onclick="editPatient(${p.patient_id})" style="background: #f59e0b; color: white;">Edit</button>` : ''}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        async function fetchRooms() {
+            globalRooms = await api('/api/rooms');
+            const tbody = document.getElementById('rooms-table-body');
+            tbody.innerHTML = globalRooms.map(r => `
+                <tr>
+                    <td><strong>${r.room_number}</strong></td>
+                    <td>${r.room_type}</td>
+                    <td>₹${r.daily_rate}/day</td>
+                    <td><span style="font-size: 0.8rem; color: var(--text-muted);">${r.facilities || 'Standard'}</span></td>
+                    <td><span class="badge ${r.occupancy_status === 'Occupied' ? 'badge-emergency' : 'badge-discharged'}">${r.occupancy_status}</span></td>
+                    <td>${r.occupied_by || '-'}</td>
+                </tr>
+            `).join('');
+
+            const selectOptions = `<option value="">-- None / Outpatient --</option>` + 
+                globalRooms.map(r => `<option value="${r.room_id}">${r.room_number} - ${r.room_type} (₹${r.daily_rate}/day)</option>`).join('');
+            
+            document.getElementById('patient-room-id').innerHTML = selectOptions;
+            document.getElementById('bill-room-id').innerHTML = selectOptions;
+        }
+
+        async function fetchDoctors() {
+            globalDoctors = await api('/api/doctors');
+            const tbody = document.getElementById('doctors-table-body');
+            if (tbody) {
+                tbody.innerHTML = globalDoctors.map(d => `
+                    <tr>
+                        <td><strong>${d.name}</strong></td>
+                        <td>${d.specialization}</td>
+                        <td>${d.qualification}</td>
+                        <td>₹${d.consultation_fee}</td>
+                        <td><span class="badge badge-active">${d.active_patient_count} Patients</span></td>
+                    </tr>
+                `).join('');
+            }
+
+            const selectOptions = `<option value="">-- Select Doctor --</option>` + 
+                globalDoctors.map(d => `<option value="${d.doctor_id}">${d.name} (${d.specialization})</option>`).join('');
+            
+            document.getElementById('patient-doctor-id').innerHTML = selectOptions;
+        }
+
+        async function fetchMedicines() {
+            globalMedicines = await api('/api/medicines');
+            const container = document.getElementById('medicine-selector-list');
+            if (container) {
+                container.innerHTML = globalMedicines.map(m => `
+                    <div style="background: white; border: 1px solid var(--border-color); padding: 0.5rem; border-radius: 6px;">
+                        <div style="font-size: 0.8rem; font-weight: 600;">${m.name}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">₹${m.unit_price} / unit</div>
+                        <input type="number" min="0" value="0" class="form-control med-qty-input" data-med-id="${m.medicine_id}" data-price="${m.unit_price}" onchange="recalculateBill()" style="margin-top: 0.25rem; padding: 0.2rem 0.4rem;">
+                    </div>
+                `).join('');
+            }
+        }
+
+        function openPatientModal() {
+            document.getElementById('patient-form').reset();
+            document.getElementById('patient-id').value = '';
+            document.getElementById('modal-title').innerText = 'Register New Patient';
+            document.getElementById('insurance-details-group').style.display = 'none';
+            document.getElementById('patient-modal').style.display = 'flex';
+        }
+
+        function closePatientModal() {
+            document.getElementById('patient-modal').style.display = 'none';
+        }
+
+        function toggleInsuranceInput(val) {
+            document.getElementById('insurance-details-group').style.display = val === 'true' ? 'block' : 'none';
+        }
+
+        function editPatient(id) {
+            const p = globalPatients.find(x => x.patient_id === id);
+            if (!p) return;
+            document.getElementById('patient-id').value = p.patient_id;
+            document.getElementById('patient-first-name').value = p.first_name;
+            document.getElementById('patient-last-name').value = p.last_name;
+            document.getElementById('patient-age').value = p.age || '';
+            document.getElementById('patient-tag').value = p.tag || 'New';
+            document.getElementById('patient-phone').value = p.phone || '';
+            document.getElementById('patient-address').value = p.address || '';
+            document.getElementById('patient-problem').value = p.problem_description || '';
+            document.getElementById('patient-has-insurance').value = p.has_insurance ? 'true' : 'false';
+            toggleInsuranceInput(p.has_insurance ? 'true' : 'false');
+            document.getElementById('patient-insurance-details').value = p.insurance_details || '';
+            document.getElementById('patient-doctor-id').value = p.assigned_doctor_id || '';
+            document.getElementById('patient-room-id').value = p.room_id || '';
+            document.getElementById('patient-appointment-time').value = (p.appointment_time || '').replace(' ', 'T');
+
+            document.getElementById('modal-title').innerText = 'Edit Patient Record';
+            document.getElementById('patient-modal').style.display = 'flex';
+        }
+
+        async function handleSavePatient(e) {
+            e.preventDefault();
+            const id = document.getElementById('patient-id').value;
+            const payload = {
+                first_name: document.getElementById('patient-first-name').value,
+                last_name: document.getElementById('patient-last-name').value,
+                age: document.getElementById('patient-age').value,
+                tag: document.getElementById('patient-tag').value,
+                phone: document.getElementById('patient-phone').value,
+                address: document.getElementById('patient-address').value,
+                problem_description: document.getElementById('patient-problem').value,
+                has_insurance: document.getElementById('patient-has-insurance').value === 'true',
+                insurance_details: document.getElementById('patient-insurance-details').value,
+                assigned_doctor_id: document.getElementById('patient-doctor-id').value,
+                room_id: document.getElementById('patient-room-id').value,
+                appointment_time: document.getElementById('patient-appointment-time').value,
+                registered_by_employee_id: 3
+            };
+
+            try {
+                if (id) {
+                    await api(`/api/patients/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+                } else {
+                    await api('/api/patients', { method: 'POST', body: JSON.stringify(payload) });
+                }
+                closePatientModal();
+                fetchPatients();
+                fetchRooms();
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+
+        async function openNotesModal(patientId, name) {
+            document.getElementById('notes-patient-id').value = patientId;
+            document.getElementById('notes-modal-title').innerText = `Clinical Notes: ${name}`;
+            document.getElementById('new-note-text').value = '';
+            document.getElementById('notes-modal').style.display = 'flex';
+            await loadNotes(patientId);
+        }
+
+        function closeNotesModal() {
+            document.getElementById('notes-modal').style.display = 'none';
+        }
+
+        async function loadNotes(patientId) {
+            const notes = await api(`/api/patients/${patientId}/notes`);
+            const container = document.getElementById('notes-container');
+            if (notes.length === 0) {
+                container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1rem;">No history notes recorded yet.</div>`;
+                return;
+            }
+            container.innerHTML = notes.map(n => `
+                <div class="note-card">
+                    <div class="note-header">
+                        <strong>${n.doctor_name}</strong>
+                        <span>${n.created_at}</span>
+                    </div>
+                    <div style="font-size: 0.85rem; color: var(--text-main);">${n.note_text}</div>
+                </div>
+            `).join('');
+        }
+
+        async function handleSaveNote(e) {
+            e.preventDefault();
+            const pid = document.getElementById('notes-patient-id').value;
+            const text = document.getElementById('new-note-text').value;
+            try {
+                await api(`/api/patients/${pid}/notes`, {
+                    method: 'POST',
+                    body: JSON.stringify({ note_text: text })
+                });
+                document.getElementById('new-note-text').value = '';
+                loadNotes(pid);
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+
+        function populateBillingPatientSelect() {
+            const sel = document.getElementById('bill-patient-id');
+            if (!sel) return;
+            sel.innerHTML = `<option value="">-- Select Patient --</option>` + 
+                globalPatients.map(p => `<option value="${p.patient_id}">${p.full_name} (ID: ${p.patient_id})</option>`).join('');
+        }
+
+        async function loadBillingPreview(patientId) {
+            if (!patientId) return;
+            const data = await api(`/api/billing/${patientId}`);
+            document.getElementById('bill-room-id').value = data.patient.room_id || '';
+            
+            document.querySelectorAll('.med-qty-input').forEach(inp => {
+                const medId = parseInt(inp.getAttribute('data-med-id'));
+                const existing = data.medicines.find(m => m.medicine_id === medId);
+                inp.value = existing ? existing.quantity : 0;
+            });
+
+            recalculateBill();
+        }
+
+        function recalculateBill() {
+            const patientId = document.getElementById('bill-patient-id').value;
+            if (!patientId) return;
+            const p = globalPatients.find(x => x.patient_id == patientId);
+            if (!p) return;
+
+            const consultation = p.consultation_fee || 0;
+            const roomId = document.getElementById('bill-room-id').value;
+            const roomObj = globalRooms.find(r => r.room_id == roomId);
+            const roomRate = roomObj ? roomObj.daily_rate : 0;
+            const roomCharge = roomRate * (p.days_stayed || 1);
+
+            let medCharge = 0;
+            document.querySelectorAll('.med-qty-input').forEach(inp => {
+                const qty = parseInt(inp.value) || 0;
+                const price = parseFloat(inp.getAttribute('data-price')) || 0;
+                medCharge += qty * price;
+            });
+
+            document.getElementById('summary-consultation').innerText = `₹${consultation}`;
+            document.getElementById('summary-room').innerText = `₹${roomCharge} (${p.days_stayed || 1} days)`;
+            document.getElementById('summary-medicines').innerText = `₹${medCharge}`;
+            document.getElementById('summary-total').innerText = `₹${consultation + roomCharge + medCharge}`;
+        }
+
+        async function handleSaveBill(e) {
+            e.preventDefault();
+            const pid = document.getElementById('bill-patient-id').value;
+            if (!pid) return alert('Select a patient first');
+
+            const medicines = [];
+            document.querySelectorAll('.med-qty-input').forEach(inp => {
+                const qty = parseInt(inp.value) || 0;
+                if (qty > 0) {
+                    medicines.push({
+                        medicine_id: parseInt(inp.getAttribute('data-med-id')),
+                        quantity: qty
+                    });
+                }
+            });
+
+            const payload = {
+                patient_id: pid,
+                room_id: document.getElementById('bill-room-id').value,
+                medicines: medicines
+            };
+
+            try {
+                await api('/api/bills', { method: 'POST', body: JSON.stringify(payload) });
+                alert('Invoice generated successfully!');
+                fetchBills();
+                fetchRooms();
+                fetchPatients();
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+
+        async function fetchBills() {
+            const bills = await api('/api/bills');
+            const tbody = document.getElementById('bills-table-body');
+            tbody.innerHTML = bills.map(b => `
+                <tr>
+                    <td><strong>#INV-${b.bill_id}</strong></td>
+                    <td>${b.patient_name}</td>
+                    <td>${b.doctor_name || 'N/A'}</td>
+                    <td>${b.room_number ? `${b.room_number} (${b.room_type})` : 'Outpatient'}</td>
+                    <td>${b.days_stayed} Day(s)</td>
+                    <td><strong style="color: var(--primary);">₹${b.total_amount}</strong></td>
+                    <td>${b.generated_at}</td>
+                </tr>
+            `).join('');
+        }
+
+        checkAuth();
+    </script>
 </body>
 </html>
