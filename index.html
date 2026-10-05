@@ -334,6 +334,7 @@
                                 <th>Insurance</th>
                                 <th>Doctor</th>
                                 <th>Room</th>
+                                <th>Stay Duration</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -511,9 +512,15 @@
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label>Appointment / Admission Time</label>
-                    <input type="datetime-local" id="patient-appointment-time" class="form-control" required>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Appointment / Admission Time</label>
+                        <input type="datetime-local" id="patient-appointment-time" class="form-control" required onchange="updateCalculatedDays()">
+                    </div>
+                    <div class="form-group">
+                        <label style="color: var(--primary);">⏱ Days Stayed</label>
+                        <input type="number" min="1" id="patient-days-stayed" class="form-control" style="font-weight: 600;" placeholder="1">
+                    </div>
                 </div>
 
                 <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">Save Patient Details</button>
@@ -672,11 +679,13 @@
             const tbody = document.getElementById('patients-table-body');
 
             if (filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No patients found.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">No patients found.</td></tr>`;
                 return;
             }
 
-            tbody.innerHTML = filtered.map(p => `
+            tbody.innerHTML = filtered.map(p => {
+                const days = p.days_stayed || 1;
+                return `
                 <tr>
                     <td><strong>${p.patient_id}</strong></td>
                     <td>
@@ -691,12 +700,13 @@
                     <td>${p.has_insurance ? `<span style="color: var(--success); font-weight: 600;">✓ Insured</span><br><span style="font-size: 0.75rem;">${p.insurance_details || ''}</span>` : 'Self Pay'}</td>
                     <td>${p.doctor_name || 'Unassigned'}</td>
                     <td>${p.room_number ? `${p.room_number} (${p.room_type})` : 'None'}</td>
+                    <td><span class="badge badge-active">${days} Day${days > 1 ? 's' : ''}</span></td>
                     <td>
                         <button class="btn btn-secondary btn-sm" onclick="openNotesModal(${p.patient_id}, '${p.full_name}')" style="background: #8b5cf6; color: white;">History/Notes</button>
                         ${currentUser.role === 'admin' ? `<button class="btn btn-secondary btn-sm" onclick="editPatient(${p.patient_id})" style="background: #f59e0b; color: white;">Edit</button>` : ''}
                     </td>
                 </tr>
-            `).join('');
+            `}).join('');
         }
 
         async function fetchRooms() {
@@ -755,11 +765,35 @@
             }
         }
 
+        function updateCalculatedDays() {
+            const input = document.getElementById('patient-appointment-time').value;
+            const daysField = document.getElementById('patient-days-stayed');
+            
+            if (!input) {
+                daysField.value = 1;
+                return;
+            }
+
+            const appDate = new Date(input);
+            const now = new Date();
+            const diffTime = now - appDate;
+            const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+            
+            daysField.value = diffDays;
+        }
+
         function openPatientModal() {
             document.getElementById('patient-form').reset();
             document.getElementById('patient-id').value = '';
             document.getElementById('modal-title').innerText = 'Register New Patient';
             document.getElementById('insurance-details-group').style.display = 'none';
+
+            // Auto-fill current timestamp for new admission
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            document.getElementById('patient-appointment-time').value = now.toISOString().slice(0, 16);
+
+            updateCalculatedDays();
             document.getElementById('patient-modal').style.display = 'flex';
         }
 
@@ -787,7 +821,10 @@
             document.getElementById('patient-insurance-details').value = p.insurance_details || '';
             document.getElementById('patient-doctor-id').value = p.assigned_doctor_id || '';
             document.getElementById('patient-room-id').value = p.room_id || '';
-            document.getElementById('patient-appointment-time').value = (p.appointment_time || '').replace(' ', 'T');
+            
+            const rawTime = p.appointment_time || p.appointment_time_raw || '';
+            document.getElementById('patient-appointment-time').value = rawTime.replace(' ', 'T').substring(0, 16);
+            document.getElementById('patient-days-stayed').value = p.days_stayed || 1;
 
             document.getElementById('modal-title').innerText = 'Edit Patient Record';
             document.getElementById('patient-modal').style.display = 'flex';
@@ -809,6 +846,7 @@
                 assigned_doctor_id: document.getElementById('patient-doctor-id').value,
                 room_id: document.getElementById('patient-room-id').value,
                 appointment_time: document.getElementById('patient-appointment-time').value,
+                days_stayed: parseInt(document.getElementById('patient-days-stayed').value) || 1,
                 registered_by_employee_id: 3
             };
 

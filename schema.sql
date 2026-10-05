@@ -1,6 +1,9 @@
 -- Create Database
-CREATE DATABASE IF NOT EXISTS HealthcareDB;
+DROP DATABASE IF EXISTS HealthcareDB;
+CREATE DATABASE HealthcareDB;
 USE HealthcareDB;
+
+-- Now run your entire CREATE TABLE and INSERT script
 
 -- 1. Employee Table
 CREATE TABLE IF NOT EXISTS Employee (
@@ -8,7 +11,7 @@ CREATE TABLE IF NOT EXISTS Employee (
     first_name VARCHAR(50) NOT NULL,
     last_name VARCHAR(50) NOT NULL,
     role VARCHAR(50) NOT NULL,
-    phone VARCHAR(15),
+    phone VARCHAR(20),
     email VARCHAR(100) UNIQUE
 );
 
@@ -32,7 +35,7 @@ CREATE TABLE IF NOT EXISTS Rooms (
     status VARCHAR(20) DEFAULT 'Vacant'
 );
 
--- 4. Patient Table (Fully updated with phone, address, description, insurance, tag)
+-- 4. Patient Table
 CREATE TABLE IF NOT EXISTS Patient (
     patient_id INT PRIMARY KEY AUTO_INCREMENT,
     first_name VARCHAR(50) NOT NULL,
@@ -55,7 +58,7 @@ CREATE TABLE IF NOT EXISTS Patient (
     FOREIGN KEY (room_id) REFERENCES Rooms(room_id) ON DELETE SET NULL
 );
 
--- 5. Patient Notes Table (Clinical evaluation & doctor visit history)
+-- 5. Patient Notes Table
 CREATE TABLE IF NOT EXISTS PatientNotes (
     note_id INT PRIMARY KEY AUTO_INCREMENT,
     patient_id INT NOT NULL,
@@ -66,7 +69,7 @@ CREATE TABLE IF NOT EXISTS PatientNotes (
     FOREIGN KEY (doctor_id) REFERENCES Doctors(doctor_id) ON DELETE CASCADE
 );
 
--- 6. Login accounts (admin and doctor users)
+-- 6. Login accounts
 CREATE TABLE IF NOT EXISTS Users (
     user_id INT PRIMARY KEY AUTO_INCREMENT,
     username VARCHAR(50) NOT NULL UNIQUE,
@@ -93,7 +96,7 @@ CREATE TABLE IF NOT EXISTS PatientMedicine (
     FOREIGN KEY (medicine_id) REFERENCES Medicines(medicine_id) ON DELETE CASCADE
 );
 
--- 9. Bills (days_stayed for dynamic room billing)
+-- 9. Bills
 CREATE TABLE IF NOT EXISTS Bills (
     bill_id INT PRIMARY KEY AUTO_INCREMENT,
     patient_id INT NOT NULL UNIQUE,
@@ -145,7 +148,7 @@ INSERT IGNORE INTO Medicines (medicine_id, name, unit_price) VALUES
 (7, 'Insulin (vial)', 150.00),
 (8, 'Salbutamol Inhaler', 90.00);
 
--- Sample Patients (Fully populated with Phone, Address, Description, Insurance, and Tag)
+-- Sample Patients
 INSERT IGNORE INTO Patient (patient_id, first_name, last_name, age, weight_kg, phone, address, problem_description, has_insurance, insurance_details, tag, appointment_time, status, assigned_doctor_id, registered_by_employee_id, room_id) VALUES
 (1, 'John', 'Doe', 45, 82.50, '9876543210', '123 Main St, Kothrud, Pune', 'Chest tightness and shortness of breath during exertion.', TRUE, 'HDFC Ergo - POL12345', 'Active', '2026-09-20 09:30:00', 'Pending', 1, 3, 4),
 (2, 'Emily', 'Davis', 8, 24.20, '9876543211', '456 Park Ave, Viman Nagar, Pune', 'High fever, sore throat, and persistent nocturnal coughing.', FALSE, NULL, 'Checkup', '2026-09-26 10:15:00', 'Pending', 2, 3, 1),
@@ -161,3 +164,10 @@ INSERT IGNORE INTO Patient (patient_id, first_name, last_name, age, weight_kg, p
 INSERT IGNORE INTO PatientNotes (note_id, patient_id, doctor_id, note_text, created_at) VALUES
 (1, 1, 1, 'Patient presented with chest pain. ECG performed, mild ST elevated signs observed. Recommended bed rest in Private Room 301.', '2026-09-20 10:15:00'),
 (2, 3, 1, 'Patient admitted to ICU due to severe dyspnea and high blood pressure. Started on IV medication.', '2026-09-26 11:30:00');
+
+-- Check doctor IDs assigned to users
+SELECT user_id, username, role, doctor_id FROM Users;
+
+-- Assign patients to Doctor ID 1 and Doctor ID 2
+UPDATE Patient SET assigned_doctor_id = 1 WHERE patient_id IN (1, 3, 5, 7, 9);
+UPDATE Patient SET assigned_doctor_id = 2 WHERE patient_id IN (2, 4, 6, 8);

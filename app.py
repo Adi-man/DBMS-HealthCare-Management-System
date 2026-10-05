@@ -14,7 +14,7 @@ app.secret_key = 'healthcare-local-secret-key'
 DB_CONFIG = {
     'host': 'localhost',
     'user': 'root',
-    'password': 'Aditya123$',
+    'password': 'C1102802',
     'database': 'HealthcareDB'
 }
 
@@ -26,17 +26,20 @@ def get_db_connection():
 def column_exists(cursor, table_name, column_name):
     cursor.execute(
         """
-        SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+        SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = %s
         """,
         (DB_CONFIG['database'], table_name, column_name)
     )
-    return cursor.fetchone()[0] > 0
+    result = cursor.fetchone()
+    if isinstance(result, dict):
+        return result['cnt'] > 0
+    return result[0] > 0
 
 
 def init_db():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     # Base Tables
     cursor.execute("""
@@ -72,6 +75,7 @@ def init_db():
             insurance_details VARCHAR(255),
             tag VARCHAR(50) DEFAULT 'New',
             appointment_time DATETIME NOT NULL,
+            days_stayed INT DEFAULT 1,
             status VARCHAR(20) NOT NULL DEFAULT 'Pending',
             assigned_doctor_id INT,
             registered_by_employee_id INT,
@@ -125,14 +129,15 @@ def init_db():
         )
     """)
 
-    # Alter schema for missing columns if upgrading existing database
+    # Schema Updates
     patient_schema_updates = [
         ('phone', 'VARCHAR(20)'),
         ('address', 'VARCHAR(255)'),
         ('problem_description', 'TEXT'),
         ('has_insurance', 'BOOLEAN DEFAULT FALSE'),
         ('insurance_details', 'VARCHAR(255)'),
-        ('tag', "VARCHAR(50) DEFAULT 'New'")
+        ('tag', "VARCHAR(50) DEFAULT 'New'"),
+        ('days_stayed', 'INT DEFAULT 1')
     ]
     for col, col_type in patient_schema_updates:
         if not column_exists(cursor, 'Patient', col):
@@ -146,37 +151,35 @@ def init_db():
     if not column_exists(cursor, 'Bills', 'days_stayed'):
         cursor.execute("ALTER TABLE Bills ADD COLUMN days_stayed INT DEFAULT 1")
 
-    # Seed Admin User
-    cursor.execute("SELECT COUNT(*) FROM Users WHERE username = 'admin'")
-    if cursor.fetchone()[0] == 0:
+    # Seed Admin Account
+    cursor.execute("SELECT COUNT(*) AS cnt FROM Users WHERE username = 'admin'")
+    if cursor.fetchone()['cnt'] == 0:
         cursor.execute(
             "INSERT INTO Users (username, password_hash, role, doctor_id) VALUES (%s, %s, %s, %s)",
             ('admin', generate_password_hash('admin123'), 'admin', None)
         )
 
-    # AUTO-UPDATE SEEDER: Populate details if existing database rows are empty/NULL
-    sample_patient_data = [
-        (1, '9876543210', '123 Main St, Kothrud, Pune', 'Chest tightness and shortness of breath during exertion.', True, 'HDFC Ergo - POL12345', 'Active'),
-        (2, '9876543211', '456 Park Ave, Viman Nagar, Pune', 'High fever, sore throat, and persistent nocturnal coughing.', False, None, 'Checkup'),
-        (3, '9876543212', '789 Oak Rd, Baner, Pune', 'Acute dyspnea and elevated blood pressure requiring ICU care.', True, 'Star Health - SH9876', 'Emergency'),
-        (4, '9876543213', '102 MG Road, Camp, Pune', 'Recurrent migraine headaches accompanied by mild dizziness.', True, 'ICICI Lombard - IL7721', 'Active'),
-        (5, '9876543214', '55 SB Road, Shivaji Nagar, Pune', 'Right knee swelling following a sports injury during football.', False, None, 'Checkup'),
-        (6, '9876543215', '88 Koregaon Park, Pune', 'Persistent lower back pain radiating down the left leg.', True, 'Care Health - CH4412', 'Active'),
-        (7, '9876543216', '12 FC Road, Deccan, Pune', 'Allergic skin rashes and severe itching over both arms.', False, None, 'New'),
-        (8, '9876543217', '34 Aundh Road, Aundh, Pune', 'Routine post-surgery recovery checkup and vitals assessment.', True, 'Max Bupa - MB3309', 'Discharged'),
-        (9, '9876543218', '90 Hadapsar Main St, Pune', 'Chronic joint stiffness and early morning hand numbness.', True, 'Bajaj Allianz - BA9012', 'Active')
-    ]
+    # Auto-seed Doctor Accounts
+    cursor.execute("""
+        SELECT d.doctor_id, e.first_name, e.last_name 
+        FROM Doctors d
+        JOIN Employee e ON d.employee_id = e.employee_id
+    """)
+    doctors = cursor.fetchall()
 
-    for pid, phone, addr, desc, ins, ins_det, tag in sample_patient_data:
-        cursor.execute(
-            """
-            UPDATE Patient 
-            SET phone = %s, address = %s, problem_description = %s, 
-                has_insurance = %s, insurance_details = %s, tag = %s 
-            WHERE patient_id = %s AND (phone IS NULL OR phone = '' OR phone = 'N/A')
-            """,
-            (phone, addr, desc, ins, ins_det, tag, pid)
-        )
+    for doc in doctors:
+        first = (doc['first_name'] or '').strip().lower()
+        last = (doc['last_name'] or '').strip().lower()
+        username = f"{first[0]}{last}" if (first and last) else f"doctor{doc['doctor_id']}"
+        
+        cursor.execute("""
+            INSERT INTO Users (username, password_hash, role, doctor_id)
+            VALUES (%s, %s, 'doctor', %s)
+            ON DUPLICATE KEY UPDATE 
+                doctor_id = VALUES(doctor_id),
+                role = 'doctor',
+                password_hash = VALUES(password_hash)
+        """, (username, generate_password_hash('doctor123'), doc['doctor_id']))
 
     conn.commit()
     cursor.close()
@@ -234,7 +237,10 @@ def calculate_stay_duration(appointment_time):
         try:
             app_dt = datetime.strptime(appointment_time, '%Y-%m-%d %H:%M:%S')
         except ValueError:
-            app_dt = datetime.strptime(appointment_time, '%Y-%m-%d %H:%M')
+            try:
+                app_dt = datetime.strptime(appointment_time, '%Y-%m-%d %H:%M')
+            except ValueError:
+                return 1
     else:
         app_dt = appointment_time
     
@@ -257,12 +263,11 @@ def patient_list_query(where_sql='', params=()):
             CONCAT(p.first_name, ' ', p.last_name) AS full_name,
             p.age, p.weight_kg, p.phone, p.address, p.problem_description,
             p.has_insurance, p.insurance_details, p.tag,
-            DATE_FORMAT(p.appointment_time, '%Y-%m-%d %H:%i:%s') AS appointment_time_raw,
-            DATE_FORMAT(p.appointment_time, '%Y-%m-%d %H:%i') AS appointment_time,
-            DATE(p.appointment_time) AS appointment_date,
+            p.appointment_time, p.days_stayed,
             p.status, p.assigned_doctor_id,
-            CONCAT('Dr. ', de.first_name, ' ', de.last_name) AS doctor_name,
-            d.consultation_fee, p.registered_by_employee_id,
+            COALESCE(CONCAT('Dr. ', de.first_name, ' ', de.last_name), 'Unassigned') AS doctor_name,
+            COALESCE(d.consultation_fee, 0.00) AS consultation_fee, 
+            p.registered_by_employee_id,
             CONCAT(re.first_name, ' ', re.last_name) AS registered_by_name,
             p.room_id, r.room_number, r.room_type, r.daily_rate AS room_rate
         FROM Patient p
@@ -281,10 +286,27 @@ def patient_list_query(where_sql='', params=()):
     conn.close()
     
     for row in rows:
+        app_time = row.get('appointment_time')
+        if isinstance(app_time, datetime):
+            row['appointment_time_raw'] = app_time.strftime('%Y-%m-%d %H:%M:%S')
+            row['appointment_time'] = app_time.strftime('%Y-%m-%d %H:%M')
+            row['appointment_date'] = app_time.strftime('%Y-%m-%d')
+        elif isinstance(app_time, str):
+            row['appointment_time_raw'] = app_time
+            row['appointment_time'] = app_time[:16]
+            row['appointment_date'] = app_time[:10]
+        else:
+            row['appointment_time_raw'] = None
+            row['appointment_time'] = None
+            row['appointment_date'] = None
+
         row['consultation_fee'] = money(row.get('consultation_fee'))
         row['room_rate'] = money(row.get('room_rate'))
         row['weight_kg'] = money(row.get('weight_kg')) if row.get('weight_kg') else None
-        row['days_stayed'] = calculate_stay_duration(row.get('appointment_time_raw'))
+        
+        # Use database days_stayed if specified, else calculated stay
+        if not row.get('days_stayed') or row['days_stayed'] <= 0:
+            row['days_stayed'] = calculate_stay_duration(row.get('appointment_time_raw'))
     return rows
 
 
@@ -299,6 +321,7 @@ def login():
         data = request.json or {}
         username = (data.get('username') or '').strip()
         password = data.get('password') or ''
+        
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute(
@@ -315,6 +338,7 @@ def login():
         user = cursor.fetchone()
         cursor.close()
         conn.close()
+
         if not user or not check_password_hash(user['password_hash'], password):
             return jsonify({'error': 'Invalid username or password'}), 401
 
@@ -322,10 +346,15 @@ def login():
         session['username'] = user['username']
         session['role'] = user['role']
         session['doctor_id'] = user['doctor_id']
+
         if user['role'] == 'admin':
             session['display_name'] = 'Administrator'
         else:
-            session['display_name'] = f"Dr. {user['first_name']} {user['last_name']}"
+            first = user.get('first_name') or ''
+            last = user.get('last_name') or ''
+            full_name = f"{first} {last}".strip()
+            session['display_name'] = f"Dr. {full_name}" if full_name else f"Dr. {user['username']}"
+
         return jsonify(current_user())
     except Error as e:
         return jsonify({'error': str(e)}), 500
@@ -349,7 +378,10 @@ def get_patients():
     try:
         user = current_user()
         if user['role'] == 'doctor':
-            rows = patient_list_query('WHERE p.assigned_doctor_id = %s', (user['doctor_id'],))
+            doc_id = user.get('doctor_id')
+            if not doc_id:
+                return jsonify([])
+            rows = patient_list_query('WHERE p.assigned_doctor_id = %s', (doc_id,))
         else:
             rows = patient_list_query()
         return jsonify(rows)
@@ -409,9 +441,9 @@ def add_patient():
         query = """
             INSERT INTO Patient
             (first_name, last_name, age, weight_kg, phone, address, problem_description,
-             has_insurance, insurance_details, tag, appointment_time, status,
+             has_insurance, insurance_details, tag, appointment_time, days_stayed, status,
              assigned_doctor_id, registered_by_employee_id, room_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         values = (
             data.get('first_name'), data.get('last_name'),
@@ -421,6 +453,7 @@ def add_patient():
             bool(data.get('has_insurance')), data.get('insurance_details'),
             data.get('tag', 'New'),
             parse_appointment_time(data.get('appointment_time')),
+            int(data.get('days_stayed', 1)),
             data.get('status', 'Pending'),
             int(data['assigned_doctor_id']) if data.get('assigned_doctor_id') else None,
             int(data['registered_by_employee_id']) if data.get('registered_by_employee_id') else None,
@@ -452,7 +485,7 @@ def update_patient(patient_id):
             SET first_name = %s, last_name = %s, age = %s, weight_kg = %s,
                 phone = %s, address = %s, problem_description = %s,
                 has_insurance = %s, insurance_details = %s, tag = %s,
-                appointment_time = %s, status = %s, assigned_doctor_id = %s,
+                appointment_time = %s, days_stayed = %s, status = %s, assigned_doctor_id = %s,
                 registered_by_employee_id = %s, room_id = %s
             WHERE patient_id = %s
         """
@@ -464,6 +497,7 @@ def update_patient(patient_id):
             bool(data.get('has_insurance')), data.get('insurance_details'),
             data.get('tag', 'New'),
             parse_appointment_time(data.get('appointment_time')),
+            int(data.get('days_stayed', 1)),
             data.get('status', 'Pending'),
             int(data['assigned_doctor_id']) if data.get('assigned_doctor_id') else None,
             int(data['registered_by_employee_id']) if data.get('registered_by_employee_id') else None,
@@ -487,7 +521,6 @@ def get_doctors():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        # Doctors see only their own row profile
         if user['role'] == 'doctor':
             query = """
                 SELECT
@@ -536,7 +569,6 @@ def get_rooms():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        # Doctors see room occupancy for their own patients only
         if user['role'] == 'doctor':
             cursor.execute(
                 """
@@ -620,7 +652,7 @@ def get_billing(patient_id):
         cursor.close()
         conn.close()
 
-        days_stayed = patient['days_stayed']
+        days_stayed = patient.get('days_stayed') or calculate_stay_duration(patient.get('appointment_time_raw'))
         consultation = money(patient.get('consultation_fee'))
         room_charge = money(patient.get('room_rate')) * days_stayed
         
@@ -694,7 +726,7 @@ def save_bill():
         cursor = conn.cursor(dictionary=True)
 
         cursor.execute(
-            "SELECT appointment_time, assigned_doctor_id FROM Patient WHERE patient_id = %s",
+            "SELECT appointment_time, days_stayed, assigned_doctor_id FROM Patient WHERE patient_id = %s",
             (patient_id,)
         )
         patient = cursor.fetchone()
@@ -703,7 +735,7 @@ def save_bill():
             conn.close()
             return jsonify({'error': 'Patient not found'}), 404
 
-        days_stayed = calculate_stay_duration(patient['appointment_time'])
+        days_stayed = patient.get('days_stayed') or calculate_stay_duration(patient['appointment_time'])
 
         cursor.execute("SELECT consultation_fee FROM Doctors WHERE doctor_id = %s", (patient.get('assigned_doctor_id'),))
         doc = cursor.fetchone()
